@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, User, Stethoscope, CheckCircle2, AlertCircle, Video, MapPin, Plus, FileText, X, ChevronRight, Phone, Sparkles, ArrowRight, ShieldCheck, Users, Info, Award, Compass, HeartPulse } from 'lucide-react';
+import { Calendar, Clock, User, Stethoscope, CheckCircle2, AlertCircle, Video, MapPin, Plus, FileText, X, ChevronRight, Phone, Sparkles, ArrowRight, ShieldCheck, Users, Info, Award, Compass, HeartPulse, Printer, Download, QrCode } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useHealthPlatform } from '../context/HealthPlatformContext';
 import { aiTriageAnalysis, getTopDoctorMatches, predictNoShowRisk } from '../utils/aiAllocationEngine';
@@ -17,13 +17,14 @@ export default function Appointments() {
   const [aiAnalysisResult, setAiAnalysisResult] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [bookedToken, setBookedToken] = useState(null);
+  const [activeSlipModal, setActiveSlipModal] = useState(null); // Printable Token Slip Modal
 
   // Manual booking states
-  const [manualDoctor, setManualDoctor] = useState(1);
+  const [manualDoctorId, setManualDoctorId] = useState(1);
   const [manualConsultType, setManualConsultType] = useState('in-person');
   const [manualDate, setManualDate] = useState('2026-09-15');
   const [manualSlot, setManualSlot] = useState('10:00 AM');
-  const [patientName, setPatientName] = useState(user?.name || '');
+  const [patientName, setPatientName] = useState(user?.name || 'Ramesh Kumar');
   const [patientPhone, setPatientPhone] = useState(user?.phone || '9876543210');
 
   // Appointments stored in localStorage
@@ -44,11 +45,31 @@ export default function Appointments() {
           patientName: user?.name || 'Ramesh Kumar',
           familyMember: 'Self',
           reason: 'Fever for 2 days & Routine Checkup',
-          status: 'Waiting',
+          status: 'Confirmed',
           queuePosition: 4,
           estWaitMin: 18,
           matchScore: 94,
           noShowRiskScore: 25,
+          createdAt: new Date().toLocaleDateString()
+        },
+        {
+          id: 'APT-802',
+          token: 'A-45',
+          doctorName: 'Dr. Kavitha M.',
+          specialty: 'Obstetrics & Gynecology',
+          department: 'Obstetrics & Gynecology',
+          clinic: 'District General Hospital & CHC',
+          date: '2026-09-16',
+          timeSlot: '11:30 AM',
+          consultType: 'in-person',
+          patientName: 'Priya Sharma',
+          familyMember: 'Spouse',
+          reason: 'Routine Prenatal Consultation',
+          status: 'Confirmed',
+          queuePosition: 2,
+          estWaitMin: 12,
+          matchScore: 91,
+          noShowRiskScore: 15,
           createdAt: new Date().toLocaleDateString()
         }
       ];
@@ -92,7 +113,7 @@ export default function Appointments() {
     }, 600);
   };
 
-  // Confirm Appointment with Chosen Matched Doctor
+  // Confirm Appointment with Chosen Matched Doctor (REAL BOOKING)
   const handleConfirmMatchedDoctorBooking = (matchOption) => {
     if (!matchOption) return;
 
@@ -128,16 +149,55 @@ export default function Appointments() {
     setAiAnalysisResult(null);
   };
 
+  // REAL MANUAL BOOKING HANDLER
+  const handleConfirmManualBooking = (e) => {
+    e.preventDefault();
+
+    const doc = doctors.find(d => d.id === Number(manualDoctorId)) || doctors[0];
+    const newToken = `A-${Math.floor(30 + Math.random() * 40)}`;
+    const newId = `APT-${Math.floor(100 + Math.random() * 900)}`;
+
+    const newApt = {
+      id: newId,
+      token: newToken,
+      doctorName: doc.name,
+      specialty: doc.specialty,
+      department: doc.department,
+      clinic: doc.clinic,
+      date: manualDate,
+      timeSlot: manualSlot,
+      consultType: manualConsultType,
+      patientName: patientName || user?.name || 'Citizen',
+      patientPhone: patientPhone || '9876543210',
+      familyMember: activeFamilyMember,
+      reason: 'Manual Direct Selection Appointment',
+      status: 'Confirmed',
+      queuePosition: (doc.currentWorkloadCount || 4) + 1,
+      estWaitMin: 15,
+      matchScore: 88,
+      noShowRiskScore: 20,
+      createdAt: new Date().toLocaleDateString()
+    };
+
+    setMyAppointments(prev => [newApt, ...prev]);
+    setBookedToken(newApt);
+    setActiveTab('ai-allocator');
+  };
+
   const handleCancelAppointment = (id) => {
-    if (window.confirm('Are you sure you want to cancel this appointment? The slot will be automatically reallocated.')) {
+    if (window.confirm('Are you sure you want to cancel this appointment? The slot will be automatically reallocated to waiting patients.')) {
       setMyAppointments(prev => prev.map(a => a.id === id ? { ...a, status: 'Cancelled' } : a));
     }
+  };
+
+  const handlePrintSlip = () => {
+    window.print();
   };
 
   const quickRequirementPills = [
     { label: '🤒 Fever & Body Pain', query: 'High fever, body ache, and cold' },
     { label: '🩺 Skin Rash / Spot', query: 'Itchy skin rash and redness' },
-    { label: '👁️ Eye Redness & Vision', query: 'Eye irritation and blurred vision' },
+    { label: '👁️ Red Eye & Vision', query: 'Eye irritation and blurred vision' },
     { label: '🤱 Maternity / Pregnancy', query: 'Routine prenatal checkup and maternity guidance' },
     { label: '🦴 Joint / Back Pain', query: 'Severe knee pain and joint stiffness' }
   ];
@@ -147,13 +207,13 @@ export default function Appointments() {
       {/* HEADER */}
       <div style={{ textAlign: 'center', marginBottom: '28px' }}>
         <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '1.2px', marginBottom: '6px', display: 'block' }}>
-          LEVEL 1 & LEVEL 2 AI DOCTOR MATCHING & SLOT ALLOCATION
+          REAL-TIME AI DOCTOR APPOINTMENT BOOKING & TOKEN QUEUE PLATFORM
         </span>
         <h1 style={{ fontSize: '32px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '6px' }}>
-          AI Doctor Matching Engine
+          Smart Appointment Allocation & Token System
         </h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '14px', maxWidth: '680px', margin: '0 auto' }}>
-          RuralCare AI evaluates doctor specialty, real-time availability, workload, distance, and waiting times to match you with the optimal doctor without searching through hundreds of listings.
+          Select your health concern, match with available doctors, get instant live queue token (e.g. Token A-27), and download your official appointment slip.
         </p>
       </div>
 
@@ -185,7 +245,7 @@ export default function Appointments() {
 
       {/* TABS SELECTOR */}
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '28px' }}>
-        <div className="role-selector" style={{ maxWidth: '520px', width: '100%' }}>
+        <div className="role-selector" style={{ maxWidth: '540px', width: '100%' }}>
           <button
             type="button"
             className={`role-option ${activeTab === 'ai-allocator' ? 'active' : ''}`}
@@ -198,14 +258,14 @@ export default function Appointments() {
             className={`role-option ${activeTab === 'manual' ? 'active' : ''}`}
             onClick={() => { setActiveTab('manual'); setBookedToken(null); }}
           >
-            <Plus size={16} /> Manual Select
+            <Plus size={16} /> Manual Booking
           </button>
           <button
             type="button"
             className={`role-option ${activeTab === 'my-bookings' ? 'active' : ''}`}
             onClick={() => setActiveTab('my-bookings')}
           >
-            <Calendar size={16} /> My Bookings ({myAppointments.length})
+            <Calendar size={16} /> My Active Bookings ({myAppointments.filter(a => a.status !== 'Cancelled').length})
           </button>
         </div>
       </div>
@@ -215,39 +275,44 @@ export default function Appointments() {
         <>
           {bookedToken ? (
             /* SUCCESS APPOINTMENT BOOKED CONFIRMATION CARD */
-            <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '36px 28px', borderRadius: '20px', textAlign: 'center', maxWidth: '680px', margin: '0 auto', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ background: '#ecfdf5', border: '2px solid #a7f3d0', padding: '36px 28px', borderRadius: '20px', textAlign: 'center', maxWidth: '680px', margin: '0 auto', boxShadow: 'var(--shadow-md)' }}>
               <div style={{ width: '64px', height: '64px', background: '#10b981', color: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px auto' }}>
                 <CheckCircle2 size={38} />
               </div>
-              <h2 style={{ fontSize: '26px', fontWeight: 800, color: '#065f46', marginBottom: '6px' }}>AI Recommended Appointment Confirmed!</h2>
+              <h2 style={{ fontSize: '26px', fontWeight: 800, color: '#065f46', marginBottom: '6px' }}>Appointment Successfully Booked!</h2>
               <p style={{ fontSize: '13px', color: '#047857', margin: '0 0 20px 0' }}>
                 Matched Doctor: <strong>{bookedToken.doctorName}</strong> (Match Score: <strong>{bookedToken.matchScore}%</strong>)
               </p>
 
-              <div style={{ background: '#ffffff', border: '1px solid #a7f3d0', borderRadius: '16px', padding: '20px', margin: '20px 0', textAlign: 'left' }}>
+              <div style={{ background: '#ffffff', border: '1px solid #a7f3d0', borderRadius: '16px', padding: '20px', margin: '20px 0', textAlign: 'left', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                   <span style={{ fontSize: '12px', fontWeight: 800, background: '#0d8b72', color: '#fff', padding: '4px 12px', borderRadius: '12px' }}>
-                    YOUR LIVE TOKEN: {bookedToken.token}
+                    YOUR LIVE QUEUE TOKEN: {bookedToken.token}
                   </span>
-                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#10b981' }}>● STATUS: CONFIRMED</span>
+                  <span style={{ fontSize: '11px', fontWeight: 800, background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '3px 8px', borderRadius: '8px' }}>
+                    ● STATUS: CONFIRMED
+                  </span>
                 </div>
 
                 <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 4px 0' }}>{bookedToken.doctorName} ({bookedToken.specialty})</h3>
                 <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '0 0 10px 0' }}>📍 {bookedToken.clinic}</p>
                 <p style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: 700 }}>
-                  📅 Scheduled Date & Time: <strong>Tomorrow at {bookedToken.timeSlot}</strong> (Queue Position #{bookedToken.queuePosition})
+                  📅 Scheduled Date & Time: <strong>{bookedToken.date} at {bookedToken.timeSlot}</strong> (Queue Position #{bookedToken.queuePosition})
                 </p>
                 <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>
-                  ⏱️ Estimated Waiting Time: ~{bookedToken.estWaitMin} mins
+                  ⏱️ Estimated Waiting Time: ~{bookedToken.estWaitMin} mins | Patient: <strong>{bookedToken.patientName} ({bookedToken.familyMember})</strong>
                 </p>
               </div>
 
-              <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-                <button className="primary-btn" onClick={() => setActiveTab('my-bookings')}>
-                  Track Live Queue & Bookings →
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                <button className="primary-btn" onClick={() => setActiveSlipModal(bookedToken)} style={{ background: '#0d8b72' }}>
+                  <Printer size={16} /> Download Official Token Slip
+                </button>
+                <button className="secondary-btn" onClick={() => setActiveTab('my-bookings')} style={{ color: '#334155', borderColor: '#cbd5e1' }}>
+                  View All Active Bookings →
                 </button>
                 <button className="secondary-btn" style={{ color: '#334155', borderColor: '#cbd5e1' }} onClick={() => setBookedToken(null)}>
-                  Run New Doctor Match
+                  + Book Another Appointment
                 </button>
               </div>
             </div>
@@ -261,7 +326,7 @@ export default function Appointments() {
                 </div>
 
                 <div className="input-group">
-                  <label>Select Quick Health Requirement Pill:</label>
+                  <label>Select Quick Health Concern Pill:</label>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
                     {quickRequirementPills.map((pill, i) => (
                       <button
@@ -286,7 +351,7 @@ export default function Appointments() {
                     rows={3}
                     className="input-field"
                     style={{ height: '80px', padding: '10px' }}
-                    placeholder="e.g. I have severe skin rash and itching on my hands..."
+                    placeholder="e.g. High fever for 2 days with severe cough..."
                     value={patientRequirement}
                     onChange={(e) => setPatientRequirement(e.target.value)}
                   />
@@ -294,12 +359,8 @@ export default function Appointments() {
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
                   <div className="input-group" style={{ margin: 0 }}>
-                    <label>Urgency Level</label>
-                    <select className="input-field" value={selectedUrgency} onChange={(e) => setSelectedUrgency(e.target.value)}>
-                      <option value="Routine">Routine Visit</option>
-                      <option value="High">Urgent Care (Same Day)</option>
-                      <option value="Emergency">Emergency Triage</option>
-                    </select>
+                    <label>Patient Name</label>
+                    <input type="text" className="input-field" value={patientName} onChange={(e) => setPatientName(e.target.value)} placeholder="Full Name" />
                   </div>
 
                   <div className="input-group" style={{ margin: 0 }}>
@@ -319,7 +380,7 @@ export default function Appointments() {
                   className="primary-btn"
                   style={{ width: '100%', padding: '12px', justifyContent: 'center', fontSize: '14px' }}
                 >
-                  {isAnalyzing ? 'Running AI Doctor Matcher...' : '⚡ Run AI Doctor Matching Engine'}
+                  {isAnalyzing ? 'Matching Doctor & Generating Token...' : '⚡ Find Best Doctor & Book Appointment'}
                 </button>
               </form>
 
@@ -338,7 +399,7 @@ export default function Appointments() {
                     </span>
                   </div>
 
-                  {/* EMERGENCY WARNING OVERRIDE IF TRIGGERED */}
+                  {/* EMERGENCY OVERRIDE IF APPLICABLE */}
                   {aiAnalysisResult.triage.isEmergencyOverride && (
                     <div style={{ background: '#fef2f2', border: '1px solid #fecaca', padding: '16px', borderRadius: '16px', marginBottom: '16px', color: '#991b1b' }}>
                       <h4 style={{ fontSize: '15px', fontWeight: 800, margin: '0 0 4px 0' }}>🚨 EMERGENCY OVERRIDE TRIGGERED</h4>
@@ -349,7 +410,7 @@ export default function Appointments() {
                     </div>
                   )}
 
-                  {/* TOP 3 DOCTORS CARDS LIST */}
+                  {/* TOP 3 DOCTORS LIST */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     {aiAnalysisResult.topMatches.map((matchItem, idx) => {
                       const isTopChoice = idx === 0;
@@ -367,7 +428,6 @@ export default function Appointments() {
                             position: 'relative'
                           }}
                         >
-                          {/* TOP 1 BEST MATCH BADGE */}
                           {isTopChoice && (
                             <div style={{ position: 'absolute', top: '-12px', left: '16px', background: '#16a34a', color: '#ffffff', fontSize: '10px', fontWeight: 800, padding: '3px 10px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                               <Award size={12} /> 🏆 1st Choice / Best Match ({scoring.matchScore}% Excellent Match)
@@ -387,7 +447,6 @@ export default function Appointments() {
                               </p>
                             </div>
 
-                            {/* MATCH SCORE BADGE */}
                             <div style={{ textAlign: 'right' }}>
                               <div style={{
                                 fontSize: '15px', fontWeight: 800,
@@ -404,7 +463,7 @@ export default function Appointments() {
                             </div>
                           </div>
 
-                          {/* WHY RECOMMENDED EXPLAINABLE AI BREAKDOWN */}
+                          {/* WHY RECOMMENDED */}
                           <div style={{ background: isTopChoice ? '#f0fdf4' : '#ffffff', border: '1px solid var(--border)', borderRadius: '12px', padding: '10px 12px', margin: '12px 0' }}>
                             <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                               Why Recommended?
@@ -418,10 +477,9 @@ export default function Appointments() {
                             </div>
                           </div>
 
-                          {/* SLOT & WAITING TIME INFO BAR */}
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                             <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                              ⏰ Available Slot: <strong>Tomorrow at {availableSlot}</strong> • ⏱️ Est. Wait: <strong>~{scoring.estWaitMinutes} mins</strong>
+                              ⏰ Slot: <strong>Tomorrow at {availableSlot}</strong> • ⏱️ Wait: <strong>~{scoring.estWaitMinutes} mins</strong>
                             </div>
 
                             <button
@@ -434,7 +492,7 @@ export default function Appointments() {
                                 borderRadius: '8px'
                               }}
                             >
-                              Book Appointment →
+                              Confirm & Book Appointment →
                             </button>
                           </div>
                         </div>
@@ -448,16 +506,21 @@ export default function Appointments() {
         </>
       )}
 
-      {/* TAB 2: MANUAL SELECT APPOINTMENT */}
+      {/* TAB 2: MANUAL SELECT APPOINTMENT FORM */}
       {activeTab === 'manual' && (
-        <form onSubmit={(e) => { e.preventDefault(); alert('Appointment booked via manual select!'); setActiveTab('my-bookings'); }} style={{ background: '#ffffff', border: '1px solid var(--border)', padding: '28px', borderRadius: '20px', maxWidth: '650px', margin: '0 auto', boxShadow: 'var(--shadow-sm)' }}>
+        <form onSubmit={handleConfirmManualBooking} style={{ background: '#ffffff', border: '1px solid var(--border)', padding: '28px', borderRadius: '20px', maxWidth: '650px', margin: '0 auto', boxShadow: 'var(--shadow-sm)' }}>
           <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '16px' }}>
-            Manual Doctor & Slot Selection
+            Manual Doctor & Slot Selection (Direct Booking)
           </h3>
 
           <div className="input-group">
-            <label>Select Doctor</label>
-            <select className="input-field" value={manualDoctor} onChange={(e) => setManualDoctor(Number(e.target.value))}>
+            <label>Patient Name *</label>
+            <input type="text" required className="input-field" value={patientName} onChange={(e) => setPatientName(e.target.value)} placeholder="Full Name" />
+          </div>
+
+          <div className="input-group">
+            <label>Select Doctor & Hospital Facility *</label>
+            <select className="input-field" value={manualDoctorId} onChange={(e) => setManualDoctorId(Number(e.target.value))}>
               {doctors.map(d => (
                 <option key={d.id} value={d.id}>{d.name} — {d.specialty} ({d.clinic})</option>
               ))}
@@ -477,59 +540,150 @@ export default function Appointments() {
                 <option value="10:00 AM">10:00 AM</option>
                 <option value="11:30 AM">11:30 AM</option>
                 <option value="02:30 PM">02:30 PM</option>
+                <option value="04:30 PM">04:30 PM</option>
               </select>
             </div>
           </div>
 
-          <button type="submit" className="primary-btn" style={{ width: '100%', padding: '12px', justifyContent: 'center' }}>
-            Confirm Manual Booking
+          <button type="submit" className="primary-btn" style={{ width: '100%', padding: '12px', justifyContent: 'center', background: '#0d8b72' }}>
+            Confirm & Create Real Appointment Token
           </button>
         </form>
       )}
 
-      {/* TAB 3: MY BOOKINGS & LIVE QUEUE TRACKER */}
+      {/* TAB 3: MY ACTIVE BOOKINGS & LIVE QUEUE TRACKER */}
       {activeTab === 'my-bookings' && (
         <div style={{ background: '#ffffff', border: '1px solid var(--border)', borderRadius: '20px', padding: '24px', boxShadow: 'var(--shadow-sm)' }}>
-          <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '16px' }}>
-            My Active Appointments & Live Token Queue
-          </h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
+              My Active Appointments & Live Token Queue
+            </h3>
+            <button
+              onClick={() => { setActiveTab('ai-allocator'); setBookedToken(null); }}
+              className="primary-btn"
+              style={{ fontSize: '12px', padding: '8px 14px', background: '#0d8b72' }}
+            >
+              <Plus size={14} /> Book New Appointment
+            </button>
+          </div>
 
           {myAppointments.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>No active appointments found.</p>
+            <div style={{ textAlign: 'center', padding: '40px', background: '#f8fafc', borderRadius: '16px' }}>
+              <Calendar size={32} color="#cbd5e1" style={{ margin: '0 auto 8px auto' }} />
+              <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>No appointments booked yet.</p>
+              <button onClick={() => setActiveTab('ai-allocator')} className="primary-btn" style={{ fontSize: '12px', marginTop: '10px' }}>
+                Find Best Doctor & Book Now →
+              </button>
+            </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {myAppointments.map((apt) => (
-                <div key={apt.id} style={{ background: '#f8fafc', border: '1px solid var(--border)', borderRadius: '16px', padding: '18px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 800, background: 'var(--primary)', color: '#fff', padding: '3px 10px', borderRadius: '12px' }}>
-                      LIVE TOKEN: {apt.token}
-                    </span>
-                    <span style={{ fontSize: '11px', fontWeight: 800, color: apt.status === 'Cancelled' ? '#dc2626' : '#10b981' }}>
-                      ● STATUS: {apt.status}
-                    </span>
+              {myAppointments.map((apt) => {
+                const isCancelled = apt.status === 'Cancelled';
+
+                return (
+                  <div
+                    key={apt.id}
+                    style={{
+                      background: isCancelled ? '#fff5f5' : '#ffffff',
+                      border: `1px solid ${isCancelled ? '#fecaca' : 'var(--border)'}`,
+                      borderRadius: '16px',
+                      padding: '18px',
+                      boxShadow: isCancelled ? 'none' : '0 2px 8px rgba(0,0,0,0.04)',
+                      opacity: isCancelled ? 0.8 : 1
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 800, background: isCancelled ? '#dc2626' : '#0d8b72', color: '#fff', padding: '4px 12px', borderRadius: '12px' }}>
+                        TOKEN: {apt.token}
+                      </span>
+                      <span style={{
+                        fontSize: '11px', fontWeight: 800, padding: '3px 8px', borderRadius: '6px',
+                        background: isCancelled ? '#fef2f2' : '#ecfdf5',
+                        color: isCancelled ? '#dc2626' : '#047857',
+                        border: `1px solid ${isCancelled ? '#fecaca' : '#a7f3d0'}`
+                      }}>
+                        ● {isCancelled ? 'Cancelled' : 'Confirmed (Active)'}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                      <div>
+                        <h4 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 2px 0' }}>{apt.doctorName}</h4>
+                        <p style={{ fontSize: '12px', color: 'var(--primary)', fontWeight: 700, margin: '0 0 8px 0' }}>{apt.specialty} • {apt.clinic}</p>
+                        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 4px 0' }}>
+                          📅 Date: <strong>{apt.date} at {apt.timeSlot}</strong> (Patient: <strong>{apt.patientName} — {apt.familyMember || 'Self'}</strong>)
+                        </p>
+                        <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>
+                          ⏱️ Queue Position: #{apt.queuePosition || 3} | Est. Waiting: ~{apt.estWaitMin || 15} mins | Match Score: {apt.matchScore || 94}%
+                        </p>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={() => setActiveSlipModal(apt)}
+                          className="secondary-btn"
+                          style={{ fontSize: '11px', padding: '6px 12px', borderColor: '#cbd5e1', color: '#334155' }}
+                        >
+                          <Printer size={12} /> Slip
+                        </button>
+                        {!isCancelled && (
+                          <button
+                            onClick={() => handleCancelAppointment(apt.id)}
+                            style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-
-                  <h4 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 2px 0' }}>{apt.doctorName}</h4>
-                  <p style={{ fontSize: '12px', color: 'var(--primary)', fontWeight: 700, margin: '0 0 8px 0' }}>{apt.specialty} • {apt.clinic}</p>
-                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 4px 0' }}>
-                    📅 Date: {apt.date} at {apt.timeSlot} | Patient: <strong>{apt.patientName} ({apt.familyMember || 'Self'})</strong>
-                  </p>
-                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>
-                    ⏱️ Est. Waiting Time: ~{apt.estWaitMin} mins | Match Score: {apt.matchScore || 92}%
-                  </p>
-
-                  {apt.status !== 'Cancelled' && (
-                    <button
-                      onClick={() => handleCancelAppointment(apt.id)}
-                      style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, marginTop: '12px', cursor: 'pointer' }}
-                    >
-                      Cancel Appointment
-                    </button>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* PRINTABLE / DOWNLOADABLE OFFICIAL TOKEN SLIP MODAL */}
+      {activeSlipModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: '#ffffff', borderRadius: '20px', maxWidth: '480px', width: '100%', padding: '28px', boxShadow: '0 20px 50px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '14px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <HeartPulse size={22} color="#0d8b72" />
+                <h3 style={{ fontSize: '18px', fontWeight: 800, margin: 0, color: '#0f172a' }}>RuralCare Official Token Slip</h3>
+              </div>
+              <button onClick={() => setActiveSlipModal(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ border: '2px dashed #0d8b72', background: '#ecfdf5', borderRadius: '16px', padding: '20px', textAlign: 'center', marginBottom: '20px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>APPOINTMENT TOKEN</span>
+              <h1 style={{ fontSize: '38px', fontWeight: 800, color: '#065f46', margin: '4px 0 8px 0' }}>{activeSlipModal.token}</h1>
+              <span style={{ fontSize: '11px', fontWeight: 800, background: '#10b981', color: '#fff', padding: '2px 8px', borderRadius: '6px' }}>
+                STATUS: {activeSlipModal.status.toUpperCase()}
+              </span>
+            </div>
+
+            <div style={{ fontSize: '13px', color: '#334155', lineHeight: 1.6, marginBottom: '20px' }}>
+              <strong>Patient Name:</strong> {activeSlipModal.patientName} ({activeSlipModal.familyMember || 'Self'})<br />
+              <strong>Doctor:</strong> {activeSlipModal.doctorName} ({activeSlipModal.specialty})<br />
+              <strong>Department:</strong> {activeSlipModal.department}<br />
+              <strong>Facility:</strong> {activeSlipModal.clinic}<br />
+              <strong>Scheduled Date:</strong> {activeSlipModal.date} at {activeSlipModal.timeSlot}<br />
+              <strong>Est. Queue Waiting:</strong> ~{activeSlipModal.estWaitMin} mins (Queue #{activeSlipModal.queuePosition})
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={handlePrintSlip} className="primary-btn" style={{ flex: 1, justifyContent: 'center', background: '#0d8b72' }}>
+                <Printer size={16} /> Print / Save PDF
+              </button>
+              <button onClick={() => setActiveSlipModal(null)} className="secondary-btn" style={{ flex: 1, justifyContent: 'center' }}>
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
