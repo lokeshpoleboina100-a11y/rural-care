@@ -82,35 +82,34 @@ export default function Appointments() {
     localStorage.setItem('ruralcare_user_appointments', JSON.stringify(myAppointments));
   }, [myAppointments]);
 
-  // Run AI Doctor Matching Engine
-  const handleRunAiAllocation = (e) => {
-    if (e) e.preventDefault();
-    if (!patientRequirement.trim()) {
+  // Run AI Doctor Matching Engine (Instant 0ms latency)
+  const handleRunAiAllocation = (e, overrideQuery) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const query = (overrideQuery || patientRequirement || '').trim();
+
+    if (!query) {
       alert('Please describe your health requirement or select a concern pill.');
       return;
     }
 
     setIsAnalyzing(true);
 
-    setTimeout(() => {
-      // 1. AI Triage
-      const triage = aiTriageAnalysis(patientRequirement);
+    // Synchronous instant calculation (0ms)
+    const triage = aiTriageAnalysis(query);
 
-      // 2. AI Doctor Matching (Top 3 Recommendations)
-      const topMatches = getTopDoctorMatches({
-        doctorsList: doctors || [],
-        department: triage.department,
-        requestedTime: preferredTimeSlot,
-        userDistanceKm: 3.2
-      });
+    const topMatches = getTopDoctorMatches({
+      doctorsList: doctors || [],
+      department: triage.department,
+      requestedTime: preferredTimeSlot,
+      userDistanceKm: 3.2
+    });
 
-      setAiAnalysisResult({
-        triage,
-        topMatches,
-        bestMatch: topMatches[0]
-      });
-      setIsAnalyzing(false);
-    }, 600);
+    setAiAnalysisResult({
+      triage,
+      topMatches,
+      bestMatch: topMatches[0]
+    });
+    setIsAnalyzing(false);
   };
 
   // Confirm Appointment with Chosen Matched Doctor (REAL BOOKING)
@@ -336,7 +335,7 @@ export default function Appointments() {
                         style={{ fontSize: '11px', background: '#f8fafc', border: '1px solid var(--border)' }}
                         onClick={() => {
                           setPatientRequirement(pill.query);
-                          handleRunAiAllocation();
+                          handleRunAiAllocation(null, pill.query);
                         }}
                       >
                         {pill.label}
