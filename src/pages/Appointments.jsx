@@ -1,18 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, User, Stethoscope, CheckCircle2, AlertCircle, Video, MapPin, Plus, FileText, X, ChevronRight, Phone, Sparkles, ArrowRight, ShieldCheck, Users, Info } from 'lucide-react';
+import { Calendar, Clock, User, Stethoscope, CheckCircle2, AlertCircle, Video, MapPin, Plus, FileText, X, ChevronRight, Phone, Sparkles, ArrowRight, ShieldCheck, Users, Info, Award, Compass, HeartPulse } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useHealthPlatform } from '../context/HealthPlatformContext';
-import { aiTriageAnalysis, recommendDoctorAndSlot, predictNoShowRisk } from '../utils/aiAllocationEngine';
+import { aiTriageAnalysis, getTopDoctorMatches, predictNoShowRisk } from '../utils/aiAllocationEngine';
 
 export default function Appointments() {
   const { user, activeFamilyMember, setActiveFamilyMember, familyMembers } = useAuth();
-  const { doctors, liveQueue } = useHealthPlatform();
+  const { doctors } = useHealthPlatform();
 
   const [activeTab, setActiveTab] = useState('ai-allocator'); // 'ai-allocator' | 'manual' | 'my-bookings'
 
   // AI Allocation Wizard state
   const [patientRequirement, setPatientRequirement] = useState('');
   const [selectedUrgency, setSelectedUrgency] = useState('Routine');
+  const [preferredTimeSlot, setPreferredTimeSlot] = useState('11:30 AM');
   const [aiAnalysisResult, setAiAnalysisResult] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [bookedToken, setBookedToken] = useState(null);
@@ -23,7 +24,7 @@ export default function Appointments() {
   const [manualDate, setManualDate] = useState('2026-09-15');
   const [manualSlot, setManualSlot] = useState('10:00 AM');
   const [patientName, setPatientName] = useState(user?.name || '');
-  const [patientPhone, setPatientPhone] = useState(user?.phone || '');
+  const [patientPhone, setPatientPhone] = useState(user?.phone || '9876543210');
 
   // Appointments stored in localStorage
   const [myAppointments, setMyAppointments] = useState(() => {
@@ -45,7 +46,8 @@ export default function Appointments() {
           reason: 'Fever for 2 days & Routine Checkup',
           status: 'Waiting',
           queuePosition: 4,
-          estWaitMin: 32,
+          estWaitMin: 18,
+          matchScore: 94,
           noShowRiskScore: 25,
           createdAt: new Date().toLocaleDateString()
         }
@@ -59,11 +61,11 @@ export default function Appointments() {
     localStorage.setItem('ruralcare_user_appointments', JSON.stringify(myAppointments));
   }, [myAppointments]);
 
-  // Run AI Allocation Engine
+  // Run AI Doctor Matching Engine
   const handleRunAiAllocation = (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!patientRequirement.trim()) {
-      alert('Please describe your health requirement or symptoms.');
+      alert('Please describe your health requirement or select a concern pill.');
       return;
     }
 
@@ -73,49 +75,50 @@ export default function Appointments() {
       // 1. AI Triage
       const triage = aiTriageAnalysis(patientRequirement);
 
-      // 2. Doctor & Slot Matching
-      const recommendation = recommendDoctorAndSlot({
-        doctorsList: doctors,
+      // 2. AI Doctor Matching (Top 3 Recommendations)
+      const topMatches = getTopDoctorMatches({
+        doctorsList: doctors || [],
         department: triage.department,
-        urgency: selectedUrgency,
-        requestedDate: '2026-09-15'
+        requestedTime: preferredTimeSlot,
+        userDistanceKm: 3.2
       });
 
       setAiAnalysisResult({
         triage,
-        recommendation
+        topMatches,
+        bestMatch: topMatches[0]
       });
       setIsAnalyzing(false);
     }, 600);
   };
 
-  // Confirm AI Allocated Appointment
-  const handleConfirmAiBooking = () => {
-    if (!aiAnalysisResult) return;
+  // Confirm Appointment with Chosen Matched Doctor
+  const handleConfirmMatchedDoctorBooking = (matchOption) => {
+    if (!matchOption) return;
 
-    const { recommendation, triage } = aiAnalysisResult;
+    const { doctor, scoring, availableSlot } = matchOption;
     const newToken = `A-${Math.floor(28 + Math.random() * 30)}`;
     const newId = `APT-${Math.floor(100 + Math.random() * 900)}`;
-
     const noShow = predictNoShowRisk({ consultType: 'in-person', reason: patientRequirement });
 
     const newApt = {
       id: newId,
       token: newToken,
-      doctorName: recommendation.recommendedDoctor.name,
-      specialty: recommendation.recommendedDoctor.specialty,
-      department: triage.department,
-      clinic: recommendation.recommendedHospital,
+      doctorName: doctor.name,
+      specialty: doctor.specialty,
+      department: aiAnalysisResult?.triage?.department || doctor.department,
+      clinic: doctor.clinic,
       date: '2026-09-15',
-      timeSlot: recommendation.bestSlot,
+      timeSlot: availableSlot || '11:30 AM',
       consultType: 'in-person',
       patientName: patientName || user?.name || 'Citizen',
       patientPhone: patientPhone || user?.phone || '9876543210',
       familyMember: activeFamilyMember,
-      reason: patientRequirement,
+      reason: patientRequirement || 'AI Doctor Matching Appointment',
       status: 'Confirmed',
-      queuePosition: recommendation.recommendedDoctor.currentWorkloadCount + 1,
-      estWaitMin: recommendation.estimatedWaitMinutes,
+      queuePosition: (doctor.currentWorkloadCount || 3) + 1,
+      estWaitMin: scoring.estWaitMinutes,
+      matchScore: scoring.matchScore,
       noShowRiskScore: noShow.riskPercentage,
       createdAt: new Date().toLocaleDateString()
     };
@@ -123,7 +126,6 @@ export default function Appointments() {
     setMyAppointments(prev => [newApt, ...prev]);
     setBookedToken(newApt);
     setAiAnalysisResult(null);
-    setPatientRequirement('');
   };
 
   const handleCancelAppointment = (id) => {
@@ -132,18 +134,26 @@ export default function Appointments() {
     }
   };
 
+  const quickRequirementPills = [
+    { label: '🤒 Fever & Body Pain', query: 'High fever, body ache, and cold' },
+    { label: '🩺 Skin Rash / Spot', query: 'Itchy skin rash and redness' },
+    { label: '👁️ Eye Redness & Vision', query: 'Eye irritation and blurred vision' },
+    { label: '🤱 Maternity / Pregnancy', query: 'Routine prenatal checkup and maternity guidance' },
+    { label: '🦴 Joint / Back Pain', query: 'Severe knee pain and joint stiffness' }
+  ];
+
   return (
-    <div className="container" style={{ padding: '36px 24px', maxWidth: '1050px' }}>
+    <div className="container" style={{ padding: '36px 24px', maxWidth: '1080px' }}>
       {/* HEADER */}
       <div style={{ textAlign: 'center', marginBottom: '28px' }}>
         <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '1.2px', marginBottom: '6px', display: 'block' }}>
-          AI DOCTOR AVAILABILITY & SMART ALLOCATION PLATFORM
+          LEVEL 1 & LEVEL 2 AI DOCTOR MATCHING & SLOT ALLOCATION
         </span>
         <h1 style={{ fontSize: '32px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '6px' }}>
-          Intelligent Doctor & Slot Recommendation Engine
+          AI Doctor Matching Engine
         </h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: '14px', maxWidth: '650px', margin: '0 auto' }}>
-          Input your health requirement ➔ AI analyzes department, doctor workload, availability, and recommends the optimal time slot & live queue token.
+        <p style={{ color: 'var(--text-muted)', fontSize: '14px', maxWidth: '680px', margin: '0 auto' }}>
+          RuralCare AI evaluates doctor specialty, real-time availability, workload, distance, and waiting times to match you with the optimal doctor without searching through hundreds of listings.
         </p>
       </div>
 
@@ -181,7 +191,7 @@ export default function Appointments() {
             className={`role-option ${activeTab === 'ai-allocator' ? 'active' : ''}`}
             onClick={() => { setActiveTab('ai-allocator'); setBookedToken(null); }}
           >
-            <Sparkles size={16} /> AI Smart Allocation
+            <Sparkles size={16} /> AI Doctor Matcher
           </button>
           <button
             type="button"
@@ -200,27 +210,32 @@ export default function Appointments() {
         </div>
       </div>
 
-      {/* TAB 1: AI SMART ALLOCATION WIZARD */}
+      {/* TAB 1: AI DOCTOR MATCHING ENGINE & COMPARISON */}
       {activeTab === 'ai-allocator' && (
         <>
           {bookedToken ? (
-            <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '36px 28px', borderRadius: '20px', textAlign: 'center', maxWidth: '650px', margin: '0 auto', boxShadow: 'var(--shadow-sm)' }}>
+            /* SUCCESS APPOINTMENT BOOKED CONFIRMATION CARD */
+            <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '36px 28px', borderRadius: '20px', textAlign: 'center', maxWidth: '680px', margin: '0 auto', boxShadow: 'var(--shadow-sm)' }}>
               <div style={{ width: '64px', height: '64px', background: '#10b981', color: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px auto' }}>
                 <CheckCircle2 size={38} />
               </div>
-              <h2 style={{ fontSize: '26px', fontWeight: 800, color: '#065f46', marginBottom: '6px' }}>AI Recommended Appointment Booked!</h2>
-              
-              <div style={{ background: '#ffffff', border: '1px solid #a7f3d0', borderRadius: '14px', padding: '20px', margin: '20px 0', textAlign: 'left' }}>
+              <h2 style={{ fontSize: '26px', fontWeight: 800, color: '#065f46', marginBottom: '6px' }}>AI Recommended Appointment Confirmed!</h2>
+              <p style={{ fontSize: '13px', color: '#047857', margin: '0 0 20px 0' }}>
+                Matched Doctor: <strong>{bookedToken.doctorName}</strong> (Match Score: <strong>{bookedToken.matchScore}%</strong>)
+              </p>
+
+              <div style={{ background: '#ffffff', border: '1px solid #a7f3d0', borderRadius: '16px', padding: '20px', margin: '20px 0', textAlign: 'left' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 800, background: '#0d8b72', color: '#fff', padding: '3px 10px', borderRadius: '12px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 800, background: '#0d8b72', color: '#fff', padding: '4px 12px', borderRadius: '12px' }}>
                     YOUR LIVE TOKEN: {bookedToken.token}
                   </span>
                   <span style={{ fontSize: '11px', fontWeight: 800, color: '#10b981' }}>● STATUS: CONFIRMED</span>
                 </div>
+
                 <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 4px 0' }}>{bookedToken.doctorName} ({bookedToken.specialty})</h3>
                 <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '0 0 10px 0' }}>📍 {bookedToken.clinic}</p>
                 <p style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: 700 }}>
-                  📅 Scheduled: {bookedToken.date} at {bookedToken.timeSlot} (Queue Position #{bookedToken.queuePosition})
+                  📅 Scheduled Date & Time: <strong>Tomorrow at {bookedToken.timeSlot}</strong> (Queue Position #{bookedToken.queuePosition})
                 </p>
                 <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>
                   ⏱️ Estimated Waiting Time: ~{bookedToken.estWaitMin} mins
@@ -232,89 +247,200 @@ export default function Appointments() {
                   Track Live Queue & Bookings →
                 </button>
                 <button className="secondary-btn" style={{ color: '#334155', borderColor: '#cbd5e1' }} onClick={() => setBookedToken(null)}>
-                  New AI Allocation
+                  Run New Doctor Match
                 </button>
               </div>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: aiAnalysisResult ? '1fr 1.1fr' : '1fr', gap: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: aiAnalysisResult ? '0.9fr 1.1fr' : '1fr', gap: '24px' }}>
               {/* REQUIREMENT INPUT FORM */}
               <form onSubmit={handleRunAiAllocation} style={{ background: '#ffffff', border: '1px solid var(--border)', padding: '28px', borderRadius: '20px', boxShadow: 'var(--shadow-sm)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
                   <Sparkles color="var(--primary)" size={20} />
-                  <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>Step 1: Describe Your Health Requirement</h3>
+                  <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>Step 1: Describe Healthcare Need</h3>
                 </div>
 
                 <div className="input-group">
-                  <label>Symptoms / Health Concern</label>
+                  <label>Select Quick Health Requirement Pill:</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
+                    {quickRequirementPills.map((pill, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        className="pill-btn"
+                        style={{ fontSize: '11px', background: '#f8fafc', border: '1px solid var(--border)' }}
+                        onClick={() => {
+                          setPatientRequirement(pill.query);
+                          handleRunAiAllocation();
+                        }}
+                      >
+                        {pill.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="input-group">
+                  <label>Or Describe Symptoms / Specialty Needed</label>
                   <textarea
+                    rows={3}
                     className="input-field"
-                    style={{ height: '110px', paddingTop: '12px', resize: 'vertical' }}
-                    placeholder="e.g. High fever with body ache for 2 days, chest pain, diabetes sugar check, baby vaccination..."
+                    style={{ height: '80px', padding: '10px' }}
+                    placeholder="e.g. I have severe skin rash and itching on my hands..."
                     value={patientRequirement}
                     onChange={(e) => setPatientRequirement(e.target.value)}
-                    required
                   />
                 </div>
 
-                <div className="input-group">
-                  <label>Urgency Level</label>
-                  <select className="input-field" value={selectedUrgency} onChange={(e) => setSelectedUrgency(e.target.value)}>
-                    <option value="Routine">Standard / Routine Visit</option>
-                    <option value="High">High Urgency (Fever, Acute Pain)</option>
-                    <option value="Emergency">Emergency Case</option>
-                  </select>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                  <div className="input-group" style={{ margin: 0 }}>
+                    <label>Urgency Level</label>
+                    <select className="input-field" value={selectedUrgency} onChange={(e) => setSelectedUrgency(e.target.value)}>
+                      <option value="Routine">Routine Visit</option>
+                      <option value="High">Urgent Care (Same Day)</option>
+                      <option value="Emergency">Emergency Triage</option>
+                    </select>
+                  </div>
+
+                  <div className="input-group" style={{ margin: 0 }}>
+                    <label>Preferred Time Slot</label>
+                    <select className="input-field" value={preferredTimeSlot} onChange={(e) => setPreferredTimeSlot(e.target.value)}>
+                      <option value="09:30 AM">09:30 AM (Morning)</option>
+                      <option value="11:30 AM">11:30 AM (Mid-day)</option>
+                      <option value="02:30 PM">02:30 PM (Afternoon)</option>
+                      <option value="04:30 PM">04:30 PM (Evening)</option>
+                    </select>
+                  </div>
                 </div>
 
-                <button type="submit" className="primary-btn" style={{ width: '100%', height: '46px', justifyContent: 'center', fontSize: '14px' }} disabled={isAnalyzing}>
-                  {isAnalyzing ? 'AI Engine Analyzing Doctor Workload...' : '⚡ Run AI Doctor & Slot Match'}
+                <button
+                  type="submit"
+                  disabled={isAnalyzing}
+                  className="primary-btn"
+                  style={{ width: '100%', padding: '12px', justifyContent: 'center', fontSize: '14px' }}
+                >
+                  {isAnalyzing ? 'Running AI Doctor Matcher...' : '⚡ Run AI Doctor Matching Engine'}
                 </button>
-
-                <div className="error-banner" style={{ background: '#f8fafc', border: '1px solid var(--border)', color: 'var(--text-muted)', marginTop: '16px', fontSize: '11px' }}>
-                  <Info size={14} /> AI guidance is for informational purposes only and does not replace professional medical advice.
-                </div>
               </form>
 
-              {/* STEP 2: AI ALLOCATION RECOMMENDATION RESULT CARD */}
+              {/* TOP 3 DOCTOR COMPARISON & MATCH SCORE RESULTS */}
               {aiAnalysisResult && (
-                <div style={{ background: '#ffffff', border: '2px solid var(--primary)', padding: '28px', borderRadius: '20px', boxShadow: 'var(--shadow-md)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 800, background: 'var(--primary)', color: '#fff', padding: '3px 10px', borderRadius: '12px' }}>
-                      BEST AI MATCH FOUND
+                <div>
+                  <div style={{ background: '#faf5ff', border: '1px solid #e9d5ff', padding: '14px 18px', borderRadius: '16px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <span style={{ fontSize: '10px', fontWeight: 800, background: '#9333ea', color: '#fff', padding: '2px 8px', borderRadius: '6px' }}>
+                        AI TRIAGE MATCH: {aiAnalysisResult.triage.department}
+                      </span>
+                      <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#4c1d95', margin: '4px 0 0 0' }}>Top 3 AI Recommended Doctors</h3>
+                    </div>
+                    <span style={{ fontSize: '11px', color: '#6b21a8', fontWeight: 700 }}>
+                      Evaluated {doctors.length} Doctors
                     </span>
-                    <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--primary)' }}>Workload Balanced</span>
                   </div>
 
-                  <h3 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '4px' }}>
-                    Recommended Department: {aiAnalysisResult.triage.department}
-                  </h3>
-                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px' }}>
-                    {aiAnalysisResult.triage.triageNote}
-                  </p>
+                  {/* EMERGENCY WARNING OVERRIDE IF TRIGGERED */}
+                  {aiAnalysisResult.triage.isEmergencyOverride && (
+                    <div style={{ background: '#fef2f2', border: '1px solid #fecaca', padding: '16px', borderRadius: '16px', marginBottom: '16px', color: '#991b1b' }}>
+                      <h4 style={{ fontSize: '15px', fontWeight: 800, margin: '0 0 4px 0' }}>🚨 EMERGENCY OVERRIDE TRIGGERED</h4>
+                      <p style={{ fontSize: '12px', margin: '0 0 10px 0' }}>{aiAnalysisResult.triage.triageNote}</p>
+                      <a href="tel:108" className="primary-btn" style={{ background: '#dc2626', color: '#fff', fontSize: '12px', padding: '8px 14px' }}>
+                        <Phone size={14} /> Call 108 Emergency Ambulance
+                      </a>
+                    </div>
+                  )}
 
-                  <div style={{ background: 'var(--primary-light)', padding: '16px', borderRadius: '14px', marginBottom: '16px', border: '1px solid #a7f3d0' }}>
-                    <h4 style={{ fontSize: '16px', fontWeight: 800, color: '#065f46', margin: '0 0 4px 0' }}>
-                      Recommended Specialist: {aiAnalysisResult.recommendation.recommendedDoctor.name}
-                    </h4>
-                    <p style={{ fontSize: '12px', color: '#047857', margin: '0 0 8px 0' }}>
-                      {aiAnalysisResult.recommendation.recommendedDoctor.specialty}
-                    </p>
-                    <p style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 700, margin: '0 0 4px 0' }}>
-                      📍 Hospital: {aiAnalysisResult.recommendation.recommendedHospital}
-                    </p>
-                    <p style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 700, margin: 0 }}>
-                      ⏰ Best Available Slot: {aiAnalysisResult.recommendation.bestSlot} (Est. Wait: ~{aiAnalysisResult.recommendation.estimatedWaitMinutes} mins)
-                    </p>
+                  {/* TOP 3 DOCTORS CARDS LIST */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {aiAnalysisResult.topMatches.map((matchItem, idx) => {
+                      const isTopChoice = idx === 0;
+                      const { doctor, scoring, availableSlot } = matchItem;
+
+                      return (
+                        <div
+                          key={doctor.id || idx}
+                          style={{
+                            background: isTopChoice ? '#ffffff' : '#f8fafc',
+                            border: isTopChoice ? '2px solid #16a34a' : '1px solid var(--border)',
+                            borderRadius: '18px',
+                            padding: '18px',
+                            boxShadow: isTopChoice ? '0 8px 24px rgba(22, 163, 74, 0.12)' : 'none',
+                            position: 'relative'
+                          }}
+                        >
+                          {/* TOP 1 BEST MATCH BADGE */}
+                          {isTopChoice && (
+                            <div style={{ position: 'absolute', top: '-12px', left: '16px', background: '#16a34a', color: '#ffffff', fontSize: '10px', fontWeight: 800, padding: '3px 10px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Award size={12} /> 🏆 1st Choice / Best Match ({scoring.matchScore}% Excellent Match)
+                            </div>
+                          )}
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: isTopChoice ? '6px' : '0' }}>
+                            <div>
+                              <h4 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
+                                {idx + 1}. {doctor.name}
+                              </h4>
+                              <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--primary)' }}>
+                                {doctor.specialty || doctor.department}
+                              </span>
+                              <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
+                                📍 {doctor.clinic} ({scoring.distanceKm} km away)
+                              </p>
+                            </div>
+
+                            {/* MATCH SCORE BADGE */}
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{
+                                fontSize: '15px', fontWeight: 800,
+                                color: isTopChoice ? '#15803d' : '#0369a1',
+                                background: isTopChoice ? '#f0fdf4' : '#f0f9ff',
+                                border: `1px solid ${isTopChoice ? '#bbf7d0' : '#bae6fd'}`,
+                                padding: '4px 10px', borderRadius: '10px'
+                              }}>
+                                {scoring.scoreLabel}
+                              </div>
+                              <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginTop: '2px' }}>
+                                Scheduling Match Score
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* WHY RECOMMENDED EXPLAINABLE AI BREAKDOWN */}
+                          <div style={{ background: isTopChoice ? '#f0fdf4' : '#ffffff', border: '1px solid var(--border)', borderRadius: '12px', padding: '10px 12px', margin: '12px 0' }}>
+                            <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                              Why Recommended?
+                            </span>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
+                              {scoring.matchReasons.map((reason, rIdx) => (
+                                <span key={rIdx} style={{ fontSize: '11px', fontWeight: 700, color: isTopChoice ? '#166534' : '#475569', background: isTopChoice ? '#dcfce7' : '#f1f5f9', padding: '2px 8px', borderRadius: '6px' }}>
+                                  {reason}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* SLOT & WAITING TIME INFO BAR */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                            <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                              ⏰ Available Slot: <strong>Tomorrow at {availableSlot}</strong> • ⏱️ Est. Wait: <strong>~{scoring.estWaitMinutes} mins</strong>
+                            </div>
+
+                            <button
+                              onClick={() => handleConfirmMatchedDoctorBooking(matchItem)}
+                              className="primary-btn"
+                              style={{
+                                background: isTopChoice ? '#16a34a' : 'var(--primary)',
+                                fontSize: '12px',
+                                padding: '8px 16px',
+                                borderRadius: '8px'
+                              }}
+                            >
+                              Book Appointment →
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-
-                  <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '10px', marginBottom: '20px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                    <strong>AI Allocation Reason:</strong><br />
-                    "{aiAnalysisResult.recommendation.reason}"
-                  </div>
-
-                  <button onClick={handleConfirmAiBooking} className="primary-btn" style={{ width: '100%', height: '48px', justifyContent: 'center', fontSize: '15px' }}>
-                    Accept & Confirm AI Recommended Booking
-                  </button>
                 </div>
               )}
             </div>
@@ -322,103 +448,87 @@ export default function Appointments() {
         </>
       )}
 
-      {/* TAB 2: MANUAL SELECT FORM */}
+      {/* TAB 2: MANUAL SELECT APPOINTMENT */}
       {activeTab === 'manual' && (
-        <form onSubmit={(e) => { e.preventDefault(); alert('Manual booking created!'); }} style={{ background: '#ffffff', border: '1px solid var(--border)', padding: '28px', borderRadius: '20px', boxShadow: 'var(--shadow-sm)' }}>
+        <form onSubmit={(e) => { e.preventDefault(); alert('Appointment booked via manual select!'); setActiveTab('my-bookings'); }} style={{ background: '#ffffff', border: '1px solid var(--border)', padding: '28px', borderRadius: '20px', maxWidth: '650px', margin: '0 auto', boxShadow: 'var(--shadow-sm)' }}>
+          <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '16px' }}>
+            Manual Doctor & Slot Selection
+          </h3>
+
           <div className="input-group">
-            <label>Select Healthcare Doctor</label>
-            <select className="input-field" value={manualDoctor} onChange={(e) => setManualDoctor(e.target.value)}>
-              {doctors.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.specialty}) — {d.status}</option>)}
+            <label>Select Doctor</label>
+            <select className="input-field" value={manualDoctor} onChange={(e) => setManualDoctor(Number(e.target.value))}>
+              {doctors.map(d => (
+                <option key={d.id} value={d.id}>{d.name} — {d.specialty} ({d.clinic})</option>
+              ))}
             </select>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-            <div className="input-group">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+            <div className="input-group" style={{ margin: 0 }}>
               <label>Consultation Date</label>
-              <input type="date" className="input-field" value={manualDate} onChange={(e) => setManualDate(e.target.value)} required />
+              <input type="date" className="input-field" value={manualDate} onChange={(e) => setManualDate(e.target.value)} />
             </div>
 
-            <div className="input-group">
-              <label>Time Slot</label>
+            <div className="input-group" style={{ margin: 0 }}>
+              <label>Select Time Slot</label>
               <select className="input-field" value={manualSlot} onChange={(e) => setManualSlot(e.target.value)}>
+                <option value="09:30 AM">09:30 AM</option>
                 <option value="10:00 AM">10:00 AM</option>
-                <option value="11:00 AM">11:00 AM</option>
-                <option value="02:00 PM">02:00 PM</option>
+                <option value="11:30 AM">11:30 AM</option>
+                <option value="02:30 PM">02:30 PM</option>
               </select>
             </div>
           </div>
 
-          <button type="submit" className="primary-btn" style={{ width: '100%', justifyContent: 'center', marginTop: '12px' }}>
-            Confirm Manual Slot
+          <button type="submit" className="primary-btn" style={{ width: '100%', padding: '12px', justifyContent: 'center' }}>
+            Confirm Manual Booking
           </button>
         </form>
       )}
 
-      {/* TAB 3: MY BOOKINGS & TOKEN TRACKER */}
+      {/* TAB 3: MY BOOKINGS & LIVE QUEUE TRACKER */}
       {activeTab === 'my-bookings' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ background: '#ffffff', border: '1px solid var(--border)', borderRadius: '20px', padding: '24px', boxShadow: 'var(--shadow-sm)' }}>
+          <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '16px' }}>
+            My Active Appointments & Live Token Queue
+          </h3>
+
           {myAppointments.length === 0 ? (
-            <div style={{ background: '#ffffff', border: '1px solid var(--border)', borderRadius: '16px', padding: '48px 24px', textAlign: 'center' }}>
-              <Calendar size={48} color="var(--text-muted)" style={{ margin: '0 auto 12px auto' }} />
-              <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)' }}>No Appointments Booked Yet</h3>
-              <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px' }}>You haven't scheduled any doctor visits yet.</p>
-              <button className="primary-btn" onClick={() => setActiveTab('ai-allocator')}>
-                Run AI Doctor & Slot Matcher →
-              </button>
-            </div>
+            <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>No active appointments found.</p>
           ) : (
-            myAppointments.map((apt) => (
-              <div key={apt.id} style={{ background: '#ffffff', border: '1px solid var(--border)', borderRadius: '16px', padding: '24px', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 800, background: '#0d8b72', color: '#fff', padding: '3px 8px', borderRadius: '6px' }}>
-                      TOKEN: {apt.token || 'A-27'}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {myAppointments.map((apt) => (
+                <div key={apt.id} style={{ background: '#f8fafc', border: '1px solid var(--border)', borderRadius: '16px', padding: '18px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 800, background: 'var(--primary)', color: '#fff', padding: '3px 10px', borderRadius: '12px' }}>
+                      LIVE TOKEN: {apt.token}
                     </span>
-                    <span style={{ fontSize: '11px', fontWeight: 800, background: apt.status === 'Cancelled' ? '#fef2f2' : '#ecfdf5', color: apt.status === 'Cancelled' ? '#dc2626' : '#047857', padding: '3px 8px', borderRadius: '6px' }}>
-                      ● {apt.status}
+                    <span style={{ fontSize: '11px', fontWeight: 800, color: apt.status === 'Cancelled' ? '#dc2626' : '#10b981' }}>
+                      ● STATUS: {apt.status}
                     </span>
-                    {apt.noShowRiskScore && (
-                      <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)' }}>
-                        No-Show Risk: {apt.noShowRiskScore}%
-                      </span>
-                    )}
                   </div>
 
-                  <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '4px' }}>
-                    {apt.doctorName} <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>({apt.specialty})</span>
-                  </h3>
-                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                    📍 {apt.clinic} • Department: {apt.department || 'General Medicine'}
+                  <h4 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 2px 0' }}>{apt.doctorName}</h4>
+                  <p style={{ fontSize: '12px', color: 'var(--primary)', fontWeight: 700, margin: '0 0 8px 0' }}>{apt.specialty} • {apt.clinic}</p>
+                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 4px 0' }}>
+                    📅 Date: {apt.date} at {apt.timeSlot} | Patient: <strong>{apt.patientName} ({apt.familyMember || 'Self'})</strong>
                   </p>
-                  <p style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: 700 }}>
-                    📅 Date: {apt.date} at ⏰ {apt.timeSlot} (Patient: {apt.patientName} - {apt.familyMember || 'Self'})
+                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>
+                    ⏱️ Est. Waiting Time: ~{apt.estWaitMin} mins | Match Score: {apt.matchScore || 92}%
                   </p>
-                  {apt.queuePosition && apt.status !== 'Cancelled' && (
-                    <p style={{ fontSize: '12px', color: 'var(--primary)', fontWeight: 800, marginTop: '4px' }}>
-                      ⏱️ Live Queue Position: #{apt.queuePosition} (Est Wait: ~{apt.estWaitMin || 25} mins)
-                    </p>
-                  )}
-                </div>
 
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    onClick={() => alert(`Appointment Slip for Token ${apt.token}\nPatient: ${apt.patientName}\nDoctor: ${apt.doctorName}\nDate: ${apt.date} at ${apt.timeSlot}\nLocation: ${apt.clinic}`)}
-                    className="login-btn"
-                    style={{ fontSize: '12px', padding: '8px 12px' }}
-                  >
-                    <FileText size={14} /> Slip
-                  </button>
                   {apt.status !== 'Cancelled' && (
                     <button
                       onClick={() => handleCancelAppointment(apt.id)}
-                      style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+                      style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, marginTop: '12px', cursor: 'pointer' }}
                     >
-                      Cancel & Reallocate
+                      Cancel Appointment
                     </button>
                   )}
                 </div>
-              </div>
-            ))
+              ))}
+            </div>
           )}
         </div>
       )}
