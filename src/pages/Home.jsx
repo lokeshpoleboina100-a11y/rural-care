@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { PhoneCall, Calendar, Bot, Shield, Stethoscope, HeartPulse, Hospital, Users, CheckCircle2, ArrowRight, ShieldAlert, MapPin, Store, FileText, Compass, Sparkles, Navigation, ChevronRight, Mic, Info } from 'lucide-react';
+import { PhoneCall, Calendar, Bot, Shield, Stethoscope, HeartPulse, Hospital, Users, CheckCircle2, ArrowRight, ShieldAlert, MapPin, Store, FileText, Compass, Sparkles, Navigation, ChevronRight, Mic, Info, Pill } from 'lucide-react';
 import { useHealthPlatform } from '../context/HealthPlatformContext';
 import { useAuth } from '../context/AuthContext';
 
@@ -140,6 +140,12 @@ export default function Home({ onOpenAIHelp }) {
               <div className="q-icon"><Store size={22} /></div>
               <h4>Pharmacy</h4>
               <p>Medicines & Supplies</p>
+            </Link>
+
+            <Link to="/medication-reminders" className="quick-card q-records" style={{ background: 'linear-gradient(135deg, #ecfdf5, #dcfce7)', borderColor: '#a7f3d0' }}>
+              <div className="q-icon" style={{ background: '#10b981', color: '#fff' }}><Pill size={22} /></div>
+              <h4 style={{ color: '#047857' }}>Medication Reminder</h4>
+              <p style={{ color: '#065f46' }}>Never Miss Doses</p>
             </Link>
 
             <Link to="/records" className="quick-card q-records">

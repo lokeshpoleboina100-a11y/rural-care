@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { User, Calendar, ShieldCheck, HeartPulse, FileText, PhoneCall, Bot, Plus } from 'lucide-react';
+import { User, Calendar, ShieldCheck, HeartPulse, FileText, PhoneCall, Bot, Plus, Pill } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function CitizenDashboard({ onOpenAIHelp }) {
@@ -50,6 +50,14 @@ export default function CitizenDashboard({ onOpenAIHelp }) {
             <div className="dash-card-lbl">Digital Health Records</div>
           </div>
         </div>
+
+        <Link to="/medication-reminders" className="dash-card" style={{ background: '#ecfdf5', borderColor: '#a7f3d0' }}>
+          <div className="dash-card-icon" style={{ background: '#10b981', color: '#fff' }}><Pill size={24} /></div>
+          <div>
+            <div className="dash-card-val" style={{ color: '#047857' }}>Active</div>
+            <div className="dash-card-lbl" style={{ color: '#065f46', fontWeight: 800 }}>💊 Medication Reminder</div>
+          </div>
+        </Link>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '28px' }}>

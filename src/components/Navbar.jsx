@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { HeartPulse, User, LogOut, Bot, Shield, Stethoscope, PhoneCall, Calendar, FileText, Globe, Store, ChevronDown, Users, Compass } from 'lucide-react';
+import { HeartPulse, User, LogOut, Bot, Shield, Stethoscope, PhoneCall, Calendar, FileText, Globe, Store, ChevronDown, Users, Compass, Pill } from 'lucide-react';
 
 export default function Navbar({ onOpenAIHelp }) {
   const { user, role, logout, lang, changeLanguage, t } = useAuth();
@@ -83,6 +83,9 @@ export default function Navbar({ onOpenAIHelp }) {
               >
                 <Link to="/records" className="nav-link" style={{ padding: '8px 12px', borderRadius: '6px' }}>
                   <FileText size={15} /> Health Records
+                </Link>
+                <Link to="/medication-reminders" className="nav-link" style={{ padding: '8px 12px', borderRadius: '6px' }}>
+                  <Pill size={15} /> Medication Reminder
                 </Link>
                 <Link to="/pharmacies" className="nav-link" style={{ padding: '8px 12px', borderRadius: '6px' }}>
                   <Store size={15} /> Pharmacies & Camps
