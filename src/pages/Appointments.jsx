@@ -82,6 +82,24 @@ export default function Appointments() {
     localStorage.setItem('ruralcare_user_appointments', JSON.stringify(myAppointments));
   }, [myAppointments]);
 
+  // Pre-calculate AI Best Doctor Match on page load for instant presentation
+  useEffect(() => {
+    const initialTriage = aiTriageAnalysis('General Medicine fever & routine checkup');
+    const initialMatches = getTopDoctorMatches({
+      doctorsList: doctors || [],
+      department: initialTriage.department,
+      requestedTime: '11:30 AM',
+      userDistanceKm: 3.2
+    });
+    if (initialMatches && initialMatches.length > 0) {
+      setAiAnalysisResult({
+        triage: initialTriage,
+        topMatches: initialMatches,
+        bestMatch: initialMatches[0]
+      });
+    }
+  }, [doctors]);
+
   // Run AI Doctor Matching Engine (Instant 0ms latency)
   const handleRunAiAllocation = (e, overrideQuery) => {
     if (e && e.preventDefault) e.preventDefault();

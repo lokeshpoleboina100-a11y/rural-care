@@ -75,7 +75,7 @@ export default function Navbar({ onOpenAIHelp }) {
                   border: '1px solid var(--border)',
                   borderRadius: '12px',
                   boxShadow: 'var(--shadow-md)',
-                  width: '200px',
+                  width: '220px',
                   padding: '8px',
                   zIndex: 200,
                   display: 'flex',
@@ -84,11 +84,11 @@ export default function Navbar({ onOpenAIHelp }) {
                 }}
                 onClick={() => setShowMoreMenu(false)}
               >
+                <Link to="/medication-reminders" className="nav-link" style={{ padding: '10px 12px', borderRadius: '8px', color: '#047857', fontWeight: 800, background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
+                  <Pill size={16} /> 💊 Medication Reminder
+                </Link>
                 <Link to="/records" className="nav-link" style={{ padding: '8px 12px', borderRadius: '6px' }}>
                   <FileText size={15} /> Health Records
-                </Link>
-                <Link to="/medication-reminders" className="nav-link" style={{ padding: '8px 12px', borderRadius: '6px' }}>
-                  <Pill size={15} /> Medication Reminder
                 </Link>
                 <Link to="/pharmacies" className="nav-link" style={{ padding: '8px 12px', borderRadius: '6px' }}>
                   <Store size={15} /> Pharmacies & Camps
@@ -110,8 +110,26 @@ export default function Navbar({ onOpenAIHelp }) {
           )}
         </div>
 
-        {/* RIGHT: LANGUAGE SELECTOR & AUTH */}
+        {/* RIGHT: LANGUAGE SELECTOR, MEDICATION REMINDER BUTTON & AUTH */}
         <div className="nav-actions">
+          <Link
+            to="/medication-reminders"
+            style={{
+              background: '#ecfdf5',
+              color: '#047857',
+              border: '1px solid #a7f3d0',
+              padding: '6px 12px',
+              borderRadius: '20px',
+              fontSize: '12px',
+              fontWeight: 800,
+              textDecoration: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <Pill size={14} color="#047857" /> 💊 Medication Reminder
+          </Link>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '12px', border: '1px solid var(--border)' }}>
             <Globe size={14} color="var(--primary)" />
             <select
