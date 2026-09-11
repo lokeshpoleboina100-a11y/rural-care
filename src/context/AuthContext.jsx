@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../supabase';
+import { translations } from '../utils/translations';
 
 const AuthContext = createContext();
 
@@ -9,6 +10,20 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Active Family Member state
+  const [activeFamilyMember, setActiveFamilyMember] = useState('Self');
+  const familyMembers = ['Self', 'Spouse', 'Child (Rohan)', 'Elderly Parent (Father)'];
+
+  // Persistent Language Selector
+  const [lang, setLang] = useState(() => localStorage.getItem('ruralcare_lang') || 'en');
+
+  const changeLanguage = (newLang) => {
+    setLang(newLang);
+    localStorage.setItem('ruralcare_lang', newLang);
+  };
+
+  const t = translations[lang] || translations.en;
 
   // Load persistent user state on app initialization
   useEffect(() => {
@@ -32,7 +47,7 @@ export const AuthProvider = ({ children }) => {
           setRole(storedRole ? storedRole.toLowerCase() : 'citizen');
         }
 
-        // Also check Supabase current session
+        // Check Supabase current session
         const { data: { session } } = await supabase.auth.getSession();
         if (session && session.user) {
           const { data: profile } = await supabase
@@ -65,7 +80,6 @@ export const AuthProvider = ({ children }) => {
     initAuth();
   }, []);
 
-  // Helper to sync local database of users
   const getLocalUsers = () => {
     try {
       return JSON.parse(localStorage.getItem('ruralcare_local_users') || '[]');
@@ -85,7 +99,6 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('ruralcare_local_users', JSON.stringify(users));
   };
 
-  // Login handler
   const login = async (email, password, targetRole) => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanRole = targetRole.toLowerCase();
@@ -105,8 +118,7 @@ export const AuthProvider = ({ children }) => {
           .maybeSingle();
 
         const userRole = (profile?.role || cleanRole).toLowerCase();
-        
-        // Ensure role match
+
         if (cleanRole && userRole !== cleanRole) {
           await supabase.auth.signOut();
           throw new Error(`This account is registered as ${userRole}. Please select the correct role.`);
@@ -135,7 +147,7 @@ export const AuthProvider = ({ children }) => {
     } catch (err) {
       console.warn('Supabase login attempted, evaluating fallback:', err.message);
       if (err.message.includes('registered as')) {
-        throw err; // Re-throw role mismatch explicitly
+        throw err;
       }
     }
 
@@ -192,7 +204,6 @@ export const AuthProvider = ({ children }) => {
     return { success: true, user: userData, role: cleanRole };
   };
 
-  // Register handler
   const register = async ({ email, password, fullName, phone, location, role }) => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanRole = role.toLowerCase();
@@ -200,7 +211,6 @@ export const AuthProvider = ({ children }) => {
     const cleanPhone = phone.trim();
     const cleanLoc = location.trim();
 
-    // Store in local user database immediately
     saveLocalUser({
       email: cleanEmail,
       password: password,
@@ -210,7 +220,6 @@ export const AuthProvider = ({ children }) => {
       role: cleanRole
     });
 
-    // Try Supabase auth in background
     try {
       const { data: sbData } = await supabase.auth.signUp({
         email: cleanEmail,
@@ -238,7 +247,6 @@ export const AuthProvider = ({ children }) => {
       console.warn('Supabase signup background note:', err.message);
     }
 
-    // Auto log in user
     const userData = {
       email: cleanEmail,
       name: cleanName,
@@ -259,12 +267,11 @@ export const AuthProvider = ({ children }) => {
     return { success: true, user: userData, role: cleanRole };
   };
 
-  // Quick 1-Click Demo Login
   const demoLogin = (targetRole) => {
     const r = targetRole.toLowerCase();
     const demoData = {
       citizen: { email: 'citizen.demo@ruralcare.in', name: 'Ramesh Kumar', phone: '9845012345', location: 'Ramapuram Village', role: 'citizen' },
-      worker: { email: 'asha.worker@ruralcare.in', name: 'Sunita Devi (ASHA)', phone: '9732109876', location: 'Primary Health Center #4', role: 'worker' },
+      worker: { email: 'dr.reddy@ruralcare.in', name: 'Dr. S. Reddy (General Medicine)', phone: '9732109876', location: 'Primary Health Center #4', role: 'worker' },
       admin: { email: 'admin@ruralcare.in', name: 'Dr. V. Rao (District Admin)', phone: '9440011223', location: 'District Headquarters', role: 'admin' }
     }[r] || { email: 'user@ruralcare.in', name: 'Demo User', phone: '9900112233', location: 'Rural Center', role: r };
 
@@ -280,7 +287,6 @@ export const AuthProvider = ({ children }) => {
     return { success: true, user: demoData, role: r };
   };
 
-  // Logout handler
   const logout = async () => {
     try {
       await supabase.auth.signOut();
@@ -298,7 +304,21 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, role, loading, login, register, demoLogin, logout }}>
+    <AuthContext.Provider value={{
+      user,
+      role,
+      loading,
+      login,
+      register,
+      demoLogin,
+      logout,
+      activeFamilyMember,
+      setActiveFamilyMember,
+      familyMembers,
+      lang,
+      changeLanguage,
+      t
+    }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,37 +1,52 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, User, Stethoscope, CheckCircle2, AlertCircle, Video, MapPin, Plus, FileText, X, ChevronRight, Phone } from 'lucide-react';
+import { Calendar, Clock, User, Stethoscope, CheckCircle2, AlertCircle, Video, MapPin, Plus, FileText, X, ChevronRight, Phone, Sparkles, ArrowRight, ShieldCheck, Users, Info } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useHealthPlatform } from '../context/HealthPlatformContext';
+import { aiTriageAnalysis, recommendDoctorAndSlot, predictNoShowRisk } from '../utils/aiAllocationEngine';
 
 export default function Appointments() {
-  const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('book'); // 'book' | 'my-appointments'
+  const { user, activeFamilyMember, setActiveFamilyMember, familyMembers } = useAuth();
+  const { doctors, liveQueue } = useHealthPlatform();
 
-  // Form states
-  const [selectedDoctor, setSelectedDoctor] = useState(1);
-  const [consultType, setConsultType] = useState('in-person'); // 'in-person' | 'telemedicine'
-  const [date, setDate] = useState('2026-09-15');
-  const [selectedSlot, setSelectedSlot] = useState('10:00 AM');
+  const [activeTab, setActiveTab] = useState('ai-allocator'); // 'ai-allocator' | 'manual' | 'my-bookings'
+
+  // AI Allocation Wizard state
+  const [patientRequirement, setPatientRequirement] = useState('');
+  const [selectedUrgency, setSelectedUrgency] = useState('Routine');
+  const [aiAnalysisResult, setAiAnalysisResult] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [bookedToken, setBookedToken] = useState(null);
+
+  // Manual booking states
+  const [manualDoctor, setManualDoctor] = useState(1);
+  const [manualConsultType, setManualConsultType] = useState('in-person');
+  const [manualDate, setManualDate] = useState('2026-09-15');
+  const [manualSlot, setManualSlot] = useState('10:00 AM');
   const [patientName, setPatientName] = useState(user?.name || '');
   const [patientPhone, setPatientPhone] = useState(user?.phone || '');
-  const [reason, setReason] = useState('');
-  const [bookingSuccess, setBookingSuccess] = useState(null);
 
-  // Persistent list of appointments stored in localStorage
+  // Appointments stored in localStorage
   const [myAppointments, setMyAppointments] = useState(() => {
     try {
       const saved = localStorage.getItem('ruralcare_user_appointments');
       return saved ? JSON.parse(saved) : [
         {
           id: 'APT-801',
+          token: 'A-27',
           doctorName: 'Dr. S. Reddy',
-          specialty: 'General Physician',
+          specialty: 'General Medicine',
+          department: 'General Medicine',
           clinic: 'Ramapuram Primary Health Center (PHC)',
           date: '2026-09-15',
           timeSlot: '10:00 AM',
           consultType: 'in-person',
           patientName: user?.name || 'Ramesh Kumar',
-          reason: 'Routine Health Checkup & Blood Pressure Check',
-          status: 'Confirmed',
+          familyMember: 'Self',
+          reason: 'Fever for 2 days & Routine Checkup',
+          status: 'Waiting',
+          queuePosition: 4,
+          estWaitMin: 32,
+          noShowRiskScore: 25,
           createdAt: new Date().toLocaleDateString()
         }
       ];
@@ -44,372 +59,363 @@ export default function Appointments() {
     localStorage.setItem('ruralcare_user_appointments', JSON.stringify(myAppointments));
   }, [myAppointments]);
 
-  useEffect(() => {
-    if (user?.name) setPatientName(user.name);
-    if (user?.phone) setPatientPhone(user.phone);
-  }, [user]);
-
-  const doctorsList = [
-    {
-      id: 1,
-      name: 'Dr. S. Reddy',
-      specialty: 'General Physician & Triage Specialist',
-      clinic: 'Ramapuram Primary Health Center (PHC)',
-      experience: '12 yrs exp',
-      availableDays: 'Mon - Sat',
-      avatarColor: '#0d8b72'
-    },
-    {
-      id: 2,
-      name: 'Dr. Kavitha M.',
-      specialty: 'Gynecologist & Maternal Health',
-      clinic: 'District General Hospital & CHC',
-      experience: '9 yrs exp',
-      availableDays: 'Tue, Thu, Sat',
-      avatarColor: '#9333ea'
-    },
-    {
-      id: 3,
-      name: 'Dr. Anjaneyulu',
-      specialty: 'Pediatrician & Child Specialist',
-      clinic: 'Community Health Clinic #4',
-      experience: '15 yrs exp',
-      availableDays: 'Mon, Wed, Fri',
-      avatarColor: '#0284c7'
-    },
-    {
-      id: 4,
-      name: 'Dr. V. Rao',
-      specialty: 'Community Health Officer & Tele-consultant',
-      clinic: 'District Tele-Medicine Center',
-      experience: '10 yrs exp',
-      availableDays: 'Mon - Sun (24/7)',
-      avatarColor: '#16a34a'
-    }
-  ];
-
-  const timeSlotsList = [
-    '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM',
-    '11:30 AM', '02:00 PM', '03:00 PM', '04:00 PM'
-  ];
-
-  const handleBookingSubmit = (e) => {
+  // Run AI Allocation Engine
+  const handleRunAiAllocation = (e) => {
     e.preventDefault();
-
-    if (!reason.trim()) {
-      alert('Please enter a brief reason or symptoms for your visit.');
+    if (!patientRequirement.trim()) {
+      alert('Please describe your health requirement or symptoms.');
       return;
     }
 
-    const doc = doctorsList.find(d => d.id === Number(selectedDoctor)) || doctorsList[0];
+    setIsAnalyzing(true);
 
-    const newAppointment = {
-      id: `APT-${Math.floor(100 + Math.random() * 900)}`,
-      doctorName: doc.name,
-      specialty: doc.specialty,
-      clinic: doc.clinic,
-      date,
-      timeSlot: selectedSlot,
-      consultType,
-      patientName: patientName.trim() || 'Citizen',
-      patientPhone: patientPhone.trim() || '9876543210',
-      reason: reason.trim(),
+    setTimeout(() => {
+      // 1. AI Triage
+      const triage = aiTriageAnalysis(patientRequirement);
+
+      // 2. Doctor & Slot Matching
+      const recommendation = recommendDoctorAndSlot({
+        doctorsList: doctors,
+        department: triage.department,
+        urgency: selectedUrgency,
+        requestedDate: '2026-09-15'
+      });
+
+      setAiAnalysisResult({
+        triage,
+        recommendation
+      });
+      setIsAnalyzing(false);
+    }, 600);
+  };
+
+  // Confirm AI Allocated Appointment
+  const handleConfirmAiBooking = () => {
+    if (!aiAnalysisResult) return;
+
+    const { recommendation, triage } = aiAnalysisResult;
+    const newToken = `A-${Math.floor(28 + Math.random() * 30)}`;
+    const newId = `APT-${Math.floor(100 + Math.random() * 900)}`;
+
+    const noShow = predictNoShowRisk({ consultType: 'in-person', reason: patientRequirement });
+
+    const newApt = {
+      id: newId,
+      token: newToken,
+      doctorName: recommendation.recommendedDoctor.name,
+      specialty: recommendation.recommendedDoctor.specialty,
+      department: triage.department,
+      clinic: recommendation.recommendedHospital,
+      date: '2026-09-15',
+      timeSlot: recommendation.bestSlot,
+      consultType: 'in-person',
+      patientName: patientName || user?.name || 'Citizen',
+      patientPhone: patientPhone || user?.phone || '9876543210',
+      familyMember: activeFamilyMember,
+      reason: patientRequirement,
       status: 'Confirmed',
+      queuePosition: recommendation.recommendedDoctor.currentWorkloadCount + 1,
+      estWaitMin: recommendation.estimatedWaitMinutes,
+      noShowRiskScore: noShow.riskPercentage,
       createdAt: new Date().toLocaleDateString()
     };
 
-    setMyAppointments(prev => [newAppointment, ...prev]);
-    setBookingSuccess(newAppointment);
-    setReason('');
+    setMyAppointments(prev => [newApt, ...prev]);
+    setBookedToken(newApt);
+    setAiAnalysisResult(null);
+    setPatientRequirement('');
   };
 
   const handleCancelAppointment = (id) => {
-    if (window.confirm('Are you sure you want to cancel this appointment?')) {
-      setMyAppointments(prev => prev.filter(a => a.id !== id));
+    if (window.confirm('Are you sure you want to cancel this appointment? The slot will be automatically reallocated.')) {
+      setMyAppointments(prev => prev.map(a => a.id === id ? { ...a, status: 'Cancelled' } : a));
     }
   };
 
   return (
-    <div className="container" style={{ padding: '36px 24px', maxWidth: '1000px' }}>
+    <div className="container" style={{ padding: '36px 24px', maxWidth: '1050px' }}>
       {/* HEADER */}
-      <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+      <div style={{ textAlign: 'center', marginBottom: '28px' }}>
         <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '1.2px', marginBottom: '6px', display: 'block' }}>
-          RURALCARE CONSULTATION PORTAL
+          AI DOCTOR AVAILABILITY & SMART ALLOCATION PLATFORM
         </span>
-        <h1 style={{ fontSize: '32px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '8px' }}>
-          Book & Manage Doctor Appointments
+        <h1 style={{ fontSize: '32px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '6px' }}>
+          Intelligent Doctor & Slot Recommendation Engine
         </h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: '15px', maxWidth: '600px', margin: '0 auto' }}>
-          Schedule in-person clinic visits with visiting PHC doctors or request 24/7 video tele-consultations from your home.
+        <p style={{ color: 'var(--text-muted)', fontSize: '14px', maxWidth: '650px', margin: '0 auto' }}>
+          Input your health requirement ➔ AI analyzes department, doctor workload, availability, and recommends the optimal time slot & live queue token.
         </p>
       </div>
 
+      {/* FAMILY MEMBER SELECTOR BAR */}
+      <div style={{ background: '#ffffff', border: '1px solid var(--border)', borderRadius: '14px', padding: '12px 20px', marginBottom: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', boxShadow: 'var(--shadow-sm)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Users size={18} color="var(--primary)" />
+          <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-primary)' }}>Patient Profile:</span>
+          <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--primary)' }}>{activeFamilyMember}</span>
+        </div>
+
+        <div style={{ display: 'flex', gap: '6px' }}>
+          {familyMembers.map((m) => (
+            <button
+              key={m}
+              onClick={() => setActiveFamilyMember(m.split(' ')[0])}
+              className={`pill-btn ${activeFamilyMember === m.split(' ')[0] ? 'active' : ''}`}
+              style={{
+                background: activeFamilyMember === m.split(' ')[0] ? 'var(--primary)' : '#f1f5f9',
+                color: activeFamilyMember === m.split(' ')[0] ? '#ffffff' : '#475569',
+                fontWeight: 700
+              }}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* TABS SELECTOR */}
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '32px' }}>
-        <div className="role-selector" style={{ maxWidth: '400px', width: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '28px' }}>
+        <div className="role-selector" style={{ maxWidth: '520px', width: '100%' }}>
           <button
             type="button"
-            className={`role-option ${activeTab === 'book' ? 'active' : ''}`}
-            onClick={() => { setActiveTab('book'); setBookingSuccess(null); }}
+            className={`role-option ${activeTab === 'ai-allocator' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('ai-allocator'); setBookedToken(null); }}
           >
-            <Plus size={16} /> Book Appointment
+            <Sparkles size={16} /> AI Smart Allocation
           </button>
           <button
             type="button"
-            className={`role-option ${activeTab === 'my-appointments' ? 'active' : ''}`}
-            onClick={() => setActiveTab('my-appointments')}
+            className={`role-option ${activeTab === 'manual' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('manual'); setBookedToken(null); }}
+          >
+            <Plus size={16} /> Manual Select
+          </button>
+          <button
+            type="button"
+            className={`role-option ${activeTab === 'my-bookings' ? 'active' : ''}`}
+            onClick={() => setActiveTab('my-bookings')}
           >
             <Calendar size={16} /> My Bookings ({myAppointments.length})
           </button>
         </div>
       </div>
 
-      {/* TAB 1: BOOKING FORM */}
-      {activeTab === 'book' && (
+      {/* TAB 1: AI SMART ALLOCATION WIZARD */}
+      {activeTab === 'ai-allocator' && (
         <>
-          {bookingSuccess ? (
-            <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '36px 28px', borderRadius: '20px', textAlign: 'center', maxWidth: '600px', margin: '0 auto', boxShadow: 'var(--shadow-sm)' }}>
-              <div style={{ width: '60px', height: '60px', background: '#10b981', color: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px auto' }}>
-                <CheckCircle2 size={36} />
+          {bookedToken ? (
+            <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '36px 28px', borderRadius: '20px', textAlign: 'center', maxWidth: '650px', margin: '0 auto', boxShadow: 'var(--shadow-sm)' }}>
+              <div style={{ width: '64px', height: '64px', background: '#10b981', color: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px auto' }}>
+                <CheckCircle2 size={38} />
               </div>
-              <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#065f46', marginBottom: '8px' }}>Appointment Successfully Booked!</h2>
-              <p style={{ color: '#047857', fontSize: '14px', marginBottom: '24px', lineHeight: 1.6 }}>
-                Appointment ID: <strong>{bookingSuccess.id}</strong><br />
-                Doctor: <strong>{bookingSuccess.doctorName}</strong> ({bookingSuccess.specialty})<br />
-                Date & Time: <strong>{bookingSuccess.date} at {bookingSuccess.timeSlot}</strong><br />
-                Mode: <strong>{bookingSuccess.consultType === 'in-person' ? '🏥 In-Person Clinic Visit' : '📹 Tele-Medicine Video Call'}</strong>
-              </p>
+              <h2 style={{ fontSize: '26px', fontWeight: 800, color: '#065f46', marginBottom: '6px' }}>AI Recommended Appointment Booked!</h2>
+              
+              <div style={{ background: '#ffffff', border: '1px solid #a7f3d0', borderRadius: '14px', padding: '20px', margin: '20px 0', textAlign: 'left' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 800, background: '#0d8b72', color: '#fff', padding: '3px 10px', borderRadius: '12px' }}>
+                    YOUR LIVE TOKEN: {bookedToken.token}
+                  </span>
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#10b981' }}>● STATUS: CONFIRMED</span>
+                </div>
+                <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 4px 0' }}>{bookedToken.doctorName} ({bookedToken.specialty})</h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '0 0 10px 0' }}>📍 {bookedToken.clinic}</p>
+                <p style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: 700 }}>
+                  📅 Scheduled: {bookedToken.date} at {bookedToken.timeSlot} (Queue Position #{bookedToken.queuePosition})
+                </p>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>
+                  ⏱️ Estimated Waiting Time: ~{bookedToken.estWaitMin} mins
+                </p>
+              </div>
+
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-                <button className="primary-btn" onClick={() => setActiveTab('my-appointments')}>
-                  View All My Appointments →
+                <button className="primary-btn" onClick={() => setActiveTab('my-bookings')}>
+                  Track Live Queue & Bookings →
                 </button>
-                <button className="secondary-btn" style={{ color: '#334155', borderColor: '#cbd5e1' }} onClick={() => setBookingSuccess(null)}>
-                  Book Another Slot
+                <button className="secondary-btn" style={{ color: '#334155', borderColor: '#cbd5e1' }} onClick={() => setBookedToken(null)}>
+                  New AI Allocation
                 </button>
               </div>
             </div>
           ) : (
-            <form onSubmit={handleBookingSubmit} style={{ background: '#ffffff', border: '1px solid var(--border)', padding: '32px', borderRadius: '20px', boxShadow: 'var(--shadow-sm)' }}>
-              
-              {/* CONSULTATION TYPE */}
-              <div className="input-group" style={{ marginBottom: '24px' }}>
-                <label style={{ fontSize: '13px', fontWeight: 800 }}>1. Select Consultation Mode</label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '8px' }}>
-                  <div
-                    onClick={() => setConsultType('in-person')}
-                    style={{
-                      border: consultType === 'in-person' ? '2px solid var(--primary)' : '1px solid var(--border)',
-                      background: consultType === 'in-person' ? 'var(--primary-light)' : '#ffffff',
-                      padding: '14px',
-                      borderRadius: '12px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    <div style={{ background: consultType === 'in-person' ? 'var(--primary)' : '#f1f5f9', color: consultType === 'in-person' ? '#fff' : '#64748b', padding: '8px', borderRadius: '8px' }}>
-                      <MapPin size={20} />
-                    </div>
-                    <div>
-                      <h4 style={{ fontSize: '14px', fontWeight: 800, margin: 0 }}>In-Person Clinic Visit</h4>
-                      <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>Visit Doctor at PHC / CHC</p>
-                    </div>
-                  </div>
-
-                  <div
-                    onClick={() => setConsultType('telemedicine')}
-                    style={{
-                      border: consultType === 'telemedicine' ? '2px solid #0284c7' : '1px solid var(--border)',
-                      background: consultType === 'telemedicine' ? '#e0f2fe' : '#ffffff',
-                      padding: '14px',
-                      borderRadius: '12px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    <div style={{ background: consultType === 'telemedicine' ? '#0284c7' : '#f1f5f9', color: consultType === 'telemedicine' ? '#fff' : '#64748b', padding: '8px', borderRadius: '8px' }}>
-                      <Video size={20} />
-                    </div>
-                    <div>
-                      <h4 style={{ fontSize: '14px', fontWeight: 800, margin: 0 }}>Tele-Medicine Video Call</h4>
-                      <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>Consult from Home via Phone</p>
-                    </div>
-                  </div>
+            <div style={{ display: 'grid', gridTemplateColumns: aiAnalysisResult ? '1fr 1.1fr' : '1fr', gap: '24px' }}>
+              {/* REQUIREMENT INPUT FORM */}
+              <form onSubmit={handleRunAiAllocation} style={{ background: '#ffffff', border: '1px solid var(--border)', padding: '28px', borderRadius: '20px', boxShadow: 'var(--shadow-sm)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                  <Sparkles color="var(--primary)" size={20} />
+                  <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>Step 1: Describe Your Health Requirement</h3>
                 </div>
-              </div>
 
-              {/* SELECT DOCTOR */}
-              <div className="input-group" style={{ marginBottom: '24px' }}>
-                <label style={{ fontSize: '13px', fontWeight: 800 }}>2. Select Doctor & Specialty</label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginTop: '8px' }}>
-                  {doctorsList.map((doc) => (
-                    <div
-                      key={doc.id}
-                      onClick={() => setSelectedDoctor(doc.id)}
-                      style={{
-                        border: selectedDoctor === doc.id ? '2px solid var(--primary)' : '1px solid var(--border)',
-                        background: selectedDoctor === doc.id ? 'var(--primary-light)' : '#ffffff',
-                        padding: '14px',
-                        borderRadius: '12px',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                        <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: doc.avatarColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '12px' }}>
-                          {doc.name.charAt(4) || 'D'}
-                        </div>
-                        <div>
-                          <h4 style={{ fontSize: '13px', fontWeight: 800, margin: 0 }}>{doc.name}</h4>
-                          <span style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: 700 }}>{doc.experience}</span>
-                        </div>
-                      </div>
-                      <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: '0 0 4px 0', fontWeight: 600 }}>{doc.specialty}</p>
-                      <p style={{ fontSize: '10px', color: 'var(--text-muted)', margin: 0 }}>📍 {doc.clinic}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* DATE & TIME SLOT */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
                 <div className="input-group">
-                  <label style={{ fontSize: '13px', fontWeight: 800 }}>3. Select Consultation Date</label>
-                  <input
-                    type="date"
+                  <label>Symptoms / Health Concern</label>
+                  <textarea
                     className="input-field"
-                    style={{ marginTop: '8px' }}
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
+                    style={{ height: '110px', paddingTop: '12px', resize: 'vertical' }}
+                    placeholder="e.g. High fever with body ache for 2 days, chest pain, diabetes sugar check, baby vaccination..."
+                    value={patientRequirement}
+                    onChange={(e) => setPatientRequirement(e.target.value)}
                     required
                   />
                 </div>
 
                 <div className="input-group">
-                  <label style={{ fontSize: '13px', fontWeight: 800 }}>4. Select Time Slot</label>
-                  <select
-                    className="input-field"
-                    style={{ marginTop: '8px' }}
-                    value={selectedSlot}
-                    onChange={(e) => setSelectedSlot(e.target.value)}
-                  >
-                    {timeSlotsList.map((slot, i) => (
-                      <option key={i} value={slot}>{slot}</option>
-                    ))}
+                  <label>Urgency Level</label>
+                  <select className="input-field" value={selectedUrgency} onChange={(e) => setSelectedUrgency(e.target.value)}>
+                    <option value="Routine">Standard / Routine Visit</option>
+                    <option value="High">High Urgency (Fever, Acute Pain)</option>
+                    <option value="Emergency">Emergency Case</option>
                   </select>
                 </div>
-              </div>
 
-              {/* PATIENT DETAILS & REASON */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-                <div className="input-group">
-                  <label>Patient Full Name</label>
-                  <input
-                    type="text"
-                    className="input-field"
-                    placeholder="Enter patient name"
-                    value={patientName}
-                    onChange={(e) => setPatientName(e.target.value)}
-                    required
-                  />
+                <button type="submit" className="primary-btn" style={{ width: '100%', height: '46px', justifyContent: 'center', fontSize: '14px' }} disabled={isAnalyzing}>
+                  {isAnalyzing ? 'AI Engine Analyzing Doctor Workload...' : '⚡ Run AI Doctor & Slot Match'}
+                </button>
+
+                <div className="error-banner" style={{ background: '#f8fafc', border: '1px solid var(--border)', color: 'var(--text-muted)', marginTop: '16px', fontSize: '11px' }}>
+                  <Info size={14} /> AI guidance is for informational purposes only and does not replace professional medical advice.
                 </div>
+              </form>
 
-                <div className="input-group">
-                  <label>Patient Phone Number</label>
-                  <input
-                    type="tel"
-                    className="input-field"
-                    placeholder="9876543210"
-                    value={patientPhone}
-                    onChange={(e) => setPatientPhone(e.target.value)}
-                    required
-                  />
+              {/* STEP 2: AI ALLOCATION RECOMMENDATION RESULT CARD */}
+              {aiAnalysisResult && (
+                <div style={{ background: '#ffffff', border: '2px solid var(--primary)', padding: '28px', borderRadius: '20px', boxShadow: 'var(--shadow-md)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 800, background: 'var(--primary)', color: '#fff', padding: '3px 10px', borderRadius: '12px' }}>
+                      BEST AI MATCH FOUND
+                    </span>
+                    <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--primary)' }}>Workload Balanced</span>
+                  </div>
+
+                  <h3 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                    Recommended Department: {aiAnalysisResult.triage.department}
+                  </h3>
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px' }}>
+                    {aiAnalysisResult.triage.triageNote}
+                  </p>
+
+                  <div style={{ background: 'var(--primary-light)', padding: '16px', borderRadius: '14px', marginBottom: '16px', border: '1px solid #a7f3d0' }}>
+                    <h4 style={{ fontSize: '16px', fontWeight: 800, color: '#065f46', margin: '0 0 4px 0' }}>
+                      Recommended Specialist: {aiAnalysisResult.recommendation.recommendedDoctor.name}
+                    </h4>
+                    <p style={{ fontSize: '12px', color: '#047857', margin: '0 0 8px 0' }}>
+                      {aiAnalysisResult.recommendation.recommendedDoctor.specialty}
+                    </p>
+                    <p style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 700, margin: '0 0 4px 0' }}>
+                      📍 Hospital: {aiAnalysisResult.recommendation.recommendedHospital}
+                    </p>
+                    <p style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 700, margin: 0 }}>
+                      ⏰ Best Available Slot: {aiAnalysisResult.recommendation.bestSlot} (Est. Wait: ~{aiAnalysisResult.recommendation.estimatedWaitMinutes} mins)
+                    </p>
+                  </div>
+
+                  <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '10px', marginBottom: '20px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    <strong>AI Allocation Reason:</strong><br />
+                    "{aiAnalysisResult.recommendation.reason}"
+                  </div>
+
+                  <button onClick={handleConfirmAiBooking} className="primary-btn" style={{ width: '100%', height: '48px', justifyContent: 'center', fontSize: '15px' }}>
+                    Accept & Confirm AI Recommended Booking
+                  </button>
                 </div>
-              </div>
-
-              <div className="input-group" style={{ marginBottom: '24px' }}>
-                <label>Symptoms / Reason for Doctor Visit</label>
-                <textarea
-                  className="input-field"
-                  style={{ height: '90px', paddingTop: '10px', resize: 'vertical' }}
-                  placeholder="e.g. High fever for 2 days, chest congestion, BP check, routine checkup..."
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  required
-                />
-              </div>
-
-              <button type="submit" className="primary-btn" style={{ width: '100%', height: '48px', justifyContent: 'center', fontSize: '15px' }}>
-                Confirm & Schedule Appointment Slot
-              </button>
-            </form>
+              )}
+            </div>
           )}
         </>
       )}
 
-      {/* TAB 2: MY BOOKED APPOINTMENTS */}
-      {activeTab === 'my-appointments' && (
+      {/* TAB 2: MANUAL SELECT FORM */}
+      {activeTab === 'manual' && (
+        <form onSubmit={(e) => { e.preventDefault(); alert('Manual booking created!'); }} style={{ background: '#ffffff', border: '1px solid var(--border)', padding: '28px', borderRadius: '20px', boxShadow: 'var(--shadow-sm)' }}>
+          <div className="input-group">
+            <label>Select Healthcare Doctor</label>
+            <select className="input-field" value={manualDoctor} onChange={(e) => setManualDoctor(e.target.value)}>
+              {doctors.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.specialty}) — {d.status}</option>)}
+            </select>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div className="input-group">
+              <label>Consultation Date</label>
+              <input type="date" className="input-field" value={manualDate} onChange={(e) => setManualDate(e.target.value)} required />
+            </div>
+
+            <div className="input-group">
+              <label>Time Slot</label>
+              <select className="input-field" value={manualSlot} onChange={(e) => setManualSlot(e.target.value)}>
+                <option value="10:00 AM">10:00 AM</option>
+                <option value="11:00 AM">11:00 AM</option>
+                <option value="02:00 PM">02:00 PM</option>
+              </select>
+            </div>
+          </div>
+
+          <button type="submit" className="primary-btn" style={{ width: '100%', justifyContent: 'center', marginTop: '12px' }}>
+            Confirm Manual Slot
+          </button>
+        </form>
+      )}
+
+      {/* TAB 3: MY BOOKINGS & TOKEN TRACKER */}
+      {activeTab === 'my-bookings' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {myAppointments.length === 0 ? (
             <div style={{ background: '#ffffff', border: '1px solid var(--border)', borderRadius: '16px', padding: '48px 24px', textAlign: 'center' }}>
               <Calendar size={48} color="var(--text-muted)" style={{ margin: '0 auto 12px auto' }} />
               <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)' }}>No Appointments Booked Yet</h3>
               <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px' }}>You haven't scheduled any doctor visits yet.</p>
-              <button className="primary-btn" onClick={() => setActiveTab('book')}>
-                Book Your First Appointment Slot →
+              <button className="primary-btn" onClick={() => setActiveTab('ai-allocator')}>
+                Run AI Doctor & Slot Matcher →
               </button>
             </div>
           ) : (
             myAppointments.map((apt) => (
               <div key={apt.id} style={{ background: '#ffffff', border: '1px solid var(--border)', borderRadius: '16px', padding: '24px', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 800, background: 'var(--primary-light)', color: 'var(--primary)', padding: '3px 8px', borderRadius: '8px' }}>
-                      {apt.id}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 800, background: '#0d8b72', color: '#fff', padding: '3px 8px', borderRadius: '6px' }}>
+                      TOKEN: {apt.token || 'A-27'}
                     </span>
-                    <span style={{ fontSize: '11px', fontWeight: 800, background: apt.consultType === 'in-person' ? '#ecfdf5' : '#e0f2fe', color: apt.consultType === 'in-person' ? '#047857' : '#0369a1', padding: '3px 8px', borderRadius: '8px' }}>
-                      {apt.consultType === 'in-person' ? '🏥 In-Person Clinic Visit' : '📹 Tele-Medicine Video Call'}
-                    </span>
-                    <span style={{ fontSize: '11px', fontWeight: 800, background: '#fef3c7', color: '#b45309', padding: '3px 8px', borderRadius: '8px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 800, background: apt.status === 'Cancelled' ? '#fef2f2' : '#ecfdf5', color: apt.status === 'Cancelled' ? '#dc2626' : '#047857', padding: '3px 8px', borderRadius: '6px' }}>
                       ● {apt.status}
                     </span>
+                    {apt.noShowRiskScore && (
+                      <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)' }}>
+                        No-Show Risk: {apt.noShowRiskScore}%
+                      </span>
+                    )}
                   </div>
 
                   <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '4px' }}>
                     {apt.doctorName} <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>({apt.specialty})</span>
                   </h3>
-                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                    📍 {apt.clinic}
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                    📍 {apt.clinic} • Department: {apt.department || 'General Medicine'}
                   </p>
                   <p style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: 700 }}>
-                    📅 Date: {apt.date} at ⏰ {apt.timeSlot} (Patient: {apt.patientName})
+                    📅 Date: {apt.date} at ⏰ {apt.timeSlot} (Patient: {apt.patientName} - {apt.familyMember || 'Self'})
                   </p>
-                  {apt.reason && (
-                    <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px', fontStyle: 'italic' }}>
-                      Note: "{apt.reason}"
+                  {apt.queuePosition && apt.status !== 'Cancelled' && (
+                    <p style={{ fontSize: '12px', color: 'var(--primary)', fontWeight: 800, marginTop: '4px' }}>
+                      ⏱️ Live Queue Position: #{apt.queuePosition} (Est Wait: ~{apt.estWaitMin || 25} mins)
                     </p>
                   )}
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button
-                    onClick={() => alert(`Appointment Slip for ${apt.id}\nPatient: ${apt.patientName}\nDoctor: ${apt.doctorName}\nDate: ${apt.date} at ${apt.timeSlot}\nLocation: ${apt.clinic}`)}
+                    onClick={() => alert(`Appointment Slip for Token ${apt.token}\nPatient: ${apt.patientName}\nDoctor: ${apt.doctorName}\nDate: ${apt.date} at ${apt.timeSlot}\nLocation: ${apt.clinic}`)}
                     className="login-btn"
-                    style={{ fontSize: '12px', padding: '8px 14px' }}
+                    style={{ fontSize: '12px', padding: '8px 12px' }}
                   >
-                    <FileText size={14} /> Download Slip
+                    <FileText size={14} /> Slip
                   </button>
-                  <button
-                    onClick={() => handleCancelAppointment(apt.id)}
-                    style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
-                  >
-                    Cancel
-                  </button>
+                  {apt.status !== 'Cancelled' && (
+                    <button
+                      onClick={() => handleCancelAppointment(apt.id)}
+                      style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Cancel & Reallocate
+                    </button>
+                  )}
                 </div>
               </div>
             ))

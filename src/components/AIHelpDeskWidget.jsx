@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, X, Send, Sparkles, PhoneCall, ShieldCheck, Heart, AlertTriangle } from 'lucide-react';
+import { Bot, X, Send, Sparkles, PhoneCall, Mic, MicOff, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function AIHelpDeskWidget({ isOpen, onClose }) {
@@ -7,13 +7,13 @@ export default function AIHelpDeskWidget({ isOpen, onClose }) {
   const [messages, setMessages] = useState([
     {
       sender: 'ai',
-      text: 'Namaste! 🙏 I am your RuralCare AI Assistant. How can I support your health or answer your questions today?',
+      text: 'Namaste! 🙏 I am your RuralCare 24/7 AI Health Assistant. How can I help you with symptoms, doctor availability, or health schemes today?',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [language, setLanguage] = useState('English');
+  const [isListening, setIsListening] = useState(false);
   const chatEndRef = useRef(null);
 
   useEffect(() => {
@@ -21,6 +21,30 @@ export default function AIHelpDeskWidget({ isOpen, onClose }) {
   }, [messages, isTyping]);
 
   if (!isOpen) return null;
+
+  // Speech Recognition (Voice Input)
+  const handleVoiceInput = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Speech recognition is not supported in this browser version. Please type your message.');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-IN';
+    recognition.interimResults = false;
+
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => setIsListening(false);
+
+    recognition.onresult = (e) => {
+      const transcript = e.results[0][0].transcript;
+      setInput(transcript);
+    };
+
+    recognition.start();
+  };
 
   const quickPills = [
     { label: '🤒 High Fever Triage', query: 'I have high fever and body ache' },
@@ -45,7 +69,7 @@ export default function AIHelpDeskWidget({ isOpen, onClose }) {
     setIsTyping(true);
 
     setTimeout(() => {
-      const response = generateAIResponse(query, language);
+      const response = generateAIResponse(query);
       setMessages(prev => [...prev, {
         sender: 'ai',
         text: response.text,
@@ -53,49 +77,36 @@ export default function AIHelpDeskWidget({ isOpen, onClose }) {
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }]);
       setIsTyping(false);
-    }, 800);
+    }, 700);
   };
 
-  const generateAIResponse = (q, lang) => {
+  const generateAIResponse = (q) => {
     const queryLower = q.toLowerCase();
 
-    if (queryLower.includes('snake') || queryLower.includes('bite') || queryLower.includes('poison')) {
+    if (queryLower.includes('snake') || queryLower.includes('bite') || queryLower.includes('chest pain')) {
       return {
-        text: `🚨 EMERGENCY ADVICE (Snakebite):\n1. Stay calm and keep the bitten limb still below heart level.\n2. Do NOT cut the wound or try to suck venom.\n3. Call 108 Emergency immediately or visit nearest District Hospital for Anti-Snake Venom (ASV).\n4. Remove tight jewellery or clothing near the bite area.`,
+        text: `🚨 EMERGENCY TRIAGE WARNING:\n1. Stay calm and lower the affected area below heart level.\n2. Do NOT cut the wound or try to suck venom.\n3. Call 108 Emergency immediately or visit nearest District Hospital for Anti-Snake Venom (ASV).\n\n⚠️ AI guidance is for informational purposes only and does not replace professional medical advice.`,
         action: { label: 'Call 108 Emergency Ambulance', link: 'tel:108', isCall: true }
       };
     }
 
-    if (queryLower.includes('fever') || queryLower.includes('cough') || queryLower.includes('cold') || queryLower.includes('headache')) {
+    if (queryLower.includes('fever') || queryLower.includes('cough') || queryLower.includes('cold')) {
       return {
-        text: `🩺 Fever & Symptom Guidance:\n• Rest and drink plenty of clean fluids (ORS, boiled water).\n• Monitor temperature with a thermometer.\n• If fever exceeds 102°F or lasts > 3 days, or if accompanied by chills or vomiting, consult your local ASHA worker or doctor.`,
-        action: { label: 'Book Doctor Consultation', route: '/appointments' }
+        text: `🩺 Fever & Symptom Triage:\n• Rest and drink plenty of clean fluids (ORS, boiled water).\n• Monitor temperature with a thermometer.\n• If fever exceeds 102°F or lasts > 3 days, consult our AI Doctor Slot Allocator.\n\n⚠️ AI guidance is for informational purposes only.`,
+        action: { label: 'Run AI Doctor & Slot Allocation', route: '/appointments' }
       };
     }
 
-    if (queryLower.includes('ayushman') || queryLower.includes('scheme') || queryLower.includes('card') || queryLower.includes('pm-jay')) {
+    if (queryLower.includes('ayushman') || queryLower.includes('scheme') || queryLower.includes('pm-jay')) {
       return {
-        text: `💳 Ayushman Bharat (PM-JAY):\n• Provides coverage up to ₹5 Lakh per family per year for secondary and tertiary hospitalization.\n• Eligibility: Rural households identified under SECC data, BPL card holders, or Ration Card holders.\n• Bring your Aadhaar Card & Ration Card to any empanelled hospital or Common Service Center (CSC) to get your ABHA ID & Golden Card generated.`,
-        action: { label: 'Find Empanelled Hospitals', route: '/emergency' }
-      };
-    }
-
-    if (queryLower.includes('hospital') || queryLower.includes('doctor') || queryLower.includes('center') || queryLower.includes('clinic')) {
-      return {
-        text: `🏥 Nearby Healthcare Centers:\nRuralCare connects you with 24/7 Primary Health Centers (PHCs), Community Health Centers (CHCs), and District General Hospitals.\nClick below to view interactive maps and emergency contact numbers.`,
-        action: { label: 'View Hospitals & Emergency Numbers', route: '/emergency' }
-      };
-    }
-
-    if (queryLower.includes('register') || queryLower.includes('login') || queryLower.includes('sign in') || queryLower.includes('account')) {
-      return {
-        text: `🔑 Account & Registration Help:\n• Citizen Account: Allows booking appointments, storing medical records, and tracking referrals.\n• Health Worker (ASHA/ANM) Account: Enables field patient triage, referral dispatch, and community health logs.\n• Admin Account: District health management.`,
-        action: { label: 'Go to Registration Page', route: '/register' }
+        text: `💳 Ayushman Bharat (PM-JAY):\n• Coverage up to ₹5 Lakh per family per year.\n• Bring your Aadhaar Card & Ration Card to any empanelled hospital to generate your ABHA Golden Card.`,
+        action: { label: 'View Empanelled Hospitals', route: '/emergency' }
       };
     }
 
     return {
-      text: `Thank you for reaching out to RuralCare AI Help Desk! 🌿\nI can assist you with:\n1. Triage for symptoms (fever, injuries, snakebites)\n2. Government Schemes (Ayushman Bharat, Jan Aushadhi, ABHA Card)\n3. Connecting with local ASHA workers & booking appointments.\n4. Locating 24/7 emergency hospitals.`
+      text: `RuralCare AI Triage Assistant:\nI can assist you with symptom evaluation, doctor availability, appointment allocation, and emergency hotlines.\n\n⚠️ AI guidance is for informational purposes only and is not a replacement for a qualified healthcare professional.`,
+      action: { label: 'Book Doctor Appointment', route: '/appointments' }
     };
   };
 
@@ -140,15 +151,14 @@ export default function AIHelpDeskWidget({ isOpen, onClose }) {
         ))}
 
         {isTyping && (
-          <div className="msg-bubble msg-ai" style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '80px' }}>
-            <span style={{ fontSize: '11px', color: '#64748b' }}>AI thinking...</span>
+          <div className="msg-bubble msg-ai" style={{ fontSize: '11px', color: '#64748b' }}>
+            AI thinking...
           </div>
         )}
         <div ref={chatEndRef} />
       </div>
 
-      <div style={{ padding: '8px 16px', background: '#ffffff', borderTop: '1px solid #f1f5f9' }}>
-        <p style={{ fontSize: '10px', fontWeight: 700, color: '#64748b', marginBottom: '6px' }}>QUICK HELP PROMPTS:</p>
+      <div style={{ padding: '8px 14px', background: '#ffffff', borderTop: '1px solid #f1f5f9' }}>
         <div className="quick-pills">
           {quickPills.map((p, i) => (
             <button key={i} className="pill-btn" onClick={() => handleSend(p.query)}>
@@ -159,16 +169,21 @@ export default function AIHelpDeskWidget({ isOpen, onClose }) {
       </div>
 
       <div className="ai-chat-footer">
+        <button onClick={handleVoiceInput} style={{ background: isListening ? '#dc2626' : '#f1f5f9', color: isListening ? '#fff' : '#475569', border: '1px solid var(--border)', width: '38px', height: '38px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Voice Input">
+          {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+        </button>
+
         <input
           type="text"
           className="ai-chat-input"
-          placeholder="Ask AI about symptoms, schemes, or hospitals..."
+          placeholder={isListening ? "Listening... Speak now" : "Type or speak symptoms..."}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
         />
+
         <button className="ai-chat-send" onClick={() => handleSend()}>
-          <Send size={18} />
+          <Send size={16} />
         </button>
       </div>
     </div>

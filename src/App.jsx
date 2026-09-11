@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { HealthPlatformProvider, useHealthPlatform } from './context/HealthPlatformContext';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import AIHelpDeskWidget from './components/AIHelpDeskWidget';
@@ -12,16 +13,19 @@ import Emergency from './pages/Emergency';
 import Appointments from './pages/Appointments';
 import CitizenDashboard from './pages/CitizenDashboard';
 import WorkerDashboard from './pages/WorkerDashboard';
+import DoctorDashboard from './pages/DoctorDashboard';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
 import AIHelpDeskPage from './pages/AIHelpDeskPage';
+import HealthRecords from './pages/HealthRecords';
+import PharmaciesAndCamps from './pages/PharmaciesAndCamps';
+import { AlertCircle } from 'lucide-react';
 
-// Protected Route Guard
 function ProtectedRoute({ children, allowedRoles }) {
   const { user, role, loading } = useAuth();
 
   if (loading) {
-    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', fontSize: '16px', color: '#64748b' }}>Loading RuralCare...</div>;
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', fontSize: '15px', color: '#64748b' }}>Loading RuralCare AI Platform...</div>;
   }
 
   if (!user) {
@@ -39,9 +43,17 @@ function ProtectedRoute({ children, allowedRoles }) {
 
 function MainApp() {
   const [isAIHelpOpen, setIsAIHelpOpen] = useState(false);
+  const { isOffline } = useHealthPlatform();
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      {/* OFFLINE / LOW NETWORK BANNER */}
+      {isOffline && (
+        <div style={{ background: '#fef2f2', borderBottom: '1px solid #fecaca', color: '#991b1b', padding: '8px 16px', fontSize: '12px', fontWeight: 800, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+          <AlertCircle size={16} /> ⚡ Limited Network Connection — Serving Cached Emergency Numbers & Offline Hospital Data
+        </div>
+      )}
+
       <Navbar onOpenAIHelp={() => setIsAIHelpOpen(true)} />
 
       <main style={{ flex: 1 }}>
@@ -51,6 +63,8 @@ function MainApp() {
           <Route path="/register" element={<Register />} />
           <Route path="/emergency" element={<Emergency />} />
           <Route path="/appointments" element={<Appointments />} />
+          <Route path="/records" element={<HealthRecords />} />
+          <Route path="/pharmacies" element={<PharmaciesAndCamps />} />
           <Route path="/ai-helpdesk" element={<AIHelpDeskPage />} />
 
           <Route
@@ -65,8 +79,17 @@ function MainApp() {
           <Route
             path="/worker"
             element={
-              <ProtectedRoute allowedRoles={['worker']}>
-                <WorkerDashboard />
+              <ProtectedRoute allowedRoles={['worker', 'admin']}>
+                <DoctorDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/doctor"
+            element={
+              <ProtectedRoute allowedRoles={['worker', 'admin']}>
+                <DoctorDashboard />
               </ProtectedRoute>
             }
           />
@@ -103,7 +126,9 @@ export default function App() {
   return (
     <Router>
       <AuthProvider>
-        <MainApp />
+        <HealthPlatformProvider>
+          <MainApp />
+        </HealthPlatformProvider>
       </AuthProvider>
     </Router>
   );
