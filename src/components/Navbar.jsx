@@ -50,6 +50,9 @@ export default function Navbar({ onOpenAIHelp }) {
           <Link to="/appointments" className={`nav-link ${location.pathname === '/appointments' ? 'active' : ''}`}>
             <Calendar size={15} /> {t.appointments}
           </Link>
+          <Link to="/medication-reminders" className={`nav-link ${location.pathname === '/medication-reminders' ? 'active' : ''}`}>
+            <Pill size={15} /> Medicines
+          </Link>
 
           {/* MORE DROPDOWN MENU FOR SECONDARY LINKS */}
           <div style={{ position: 'relative' }}>
