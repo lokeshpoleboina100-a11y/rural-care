@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { HeartPulse, User, LogOut, Bot, Shield, Stethoscope, PhoneCall, Calendar, FileText, Globe, Store } from 'lucide-react';
+import { HeartPulse, User, LogOut, Bot, Shield, Stethoscope, PhoneCall, Calendar, FileText, Globe, Store, ChevronDown, Users, Compass } from 'lucide-react';
 
 export default function Navbar({ onOpenAIHelp }) {
   const { user, role, logout, lang, changeLanguage, t } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -22,32 +23,79 @@ export default function Navbar({ onOpenAIHelp }) {
   return (
     <nav className="navbar">
       <div className="navbar-container">
+        {/* LEFT: BRAND LOGO + SUBTITLE */}
         <Link to="/" className="brand-logo">
           <div className="brand-icon">
             <HeartPulse size={22} />
           </div>
           <div>
-            <span>RuralCare</span>
-            <span className="brand-tag">{t.brandTag}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>RuralCare</span>
+              <span className="brand-tag">{t.brandTag}</span>
+            </div>
+            <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600, display: 'block', lineHeight: 1 }}>
+              Healthcare access, closer to you
+            </span>
           </div>
         </Link>
 
+        {/* CENTER: SIMPLIFIED PRIMARY LINKS */}
         <div className="nav-links">
           <Link to="/" className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}>
             {t.home}
           </Link>
           <Link to="/emergency" className={`nav-link ${location.pathname === '/emergency' ? 'active' : ''}`}>
-            <PhoneCall size={15} /> {t.emergency}
+            <Compass size={15} /> Find Care
           </Link>
           <Link to="/appointments" className={`nav-link ${location.pathname === '/appointments' ? 'active' : ''}`}>
             <Calendar size={15} /> {t.appointments}
           </Link>
-          <Link to="/records" className={`nav-link ${location.pathname === '/records' ? 'active' : ''}`}>
-            <FileText size={15} /> {t.healthRecords}
-          </Link>
-          <Link to="/pharmacies" className={`nav-link ${location.pathname === '/pharmacies' ? 'active' : ''}`}>
-            <Store size={15} /> {t.pharmacies}
-          </Link>
+
+          {/* MORE DROPDOWN MENU FOR SECONDARY LINKS */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowMoreMenu(prev => !prev)}
+              className="nav-link"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              <span>More</span>
+              <ChevronDown size={14} />
+            </button>
+
+            {showMoreMenu && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '36px',
+                  left: '0',
+                  background: '#ffffff',
+                  border: '1px solid var(--border)',
+                  borderRadius: '12px',
+                  boxShadow: 'var(--shadow-md)',
+                  width: '200px',
+                  padding: '8px',
+                  zIndex: 200,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px'
+                }}
+                onClick={() => setShowMoreMenu(false)}
+              >
+                <Link to="/records" className="nav-link" style={{ padding: '8px 12px', borderRadius: '6px' }}>
+                  <FileText size={15} /> Health Records
+                </Link>
+                <Link to="/pharmacies" className="nav-link" style={{ padding: '8px 12px', borderRadius: '6px' }}>
+                  <Store size={15} /> Pharmacies & Camps
+                </Link>
+                <Link to="/ai-helpdesk" className="nav-link" style={{ padding: '8px 12px', borderRadius: '6px' }}>
+                  <Bot size={15} /> AI Help Desk
+                </Link>
+                <Link to="/doctor" className="nav-link" style={{ padding: '8px 12px', borderRadius: '6px' }}>
+                  <Stethoscope size={15} /> Doctor Portal
+                </Link>
+              </div>
+            )}
+          </div>
 
           {user && (
             <Link to={getDashboardPath()} className={`nav-link ${location.pathname.startsWith('/citizen') || location.pathname.startsWith('/worker') || location.pathname.startsWith('/admin') ? 'active' : ''}`}>
@@ -56,8 +104,8 @@ export default function Navbar({ onOpenAIHelp }) {
           )}
         </div>
 
+        {/* RIGHT: LANGUAGE SELECTOR & AUTH */}
         <div className="nav-actions">
-          {/* LANGUAGE SELECTOR */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '12px', border: '1px solid var(--border)' }}>
             <Globe size={14} color="var(--primary)" />
             <select
@@ -71,11 +119,6 @@ export default function Navbar({ onOpenAIHelp }) {
               <option value="ta">தமிழ்</option>
             </select>
           </div>
-
-          <button className="ai-help-btn" onClick={onOpenAIHelp}>
-            <Bot size={16} />
-            <span>{t.aiAssistantBtn}</span>
-          </button>
 
           {user ? (
             <div className="user-badge">
