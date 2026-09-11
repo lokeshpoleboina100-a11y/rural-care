@@ -59,6 +59,182 @@ button, input, select, textarea {
   padding: 0 24px;
 }
 
+/* MOBILE-ONLY HORIZONTAL QUICK-ACTION SLIDER */
+.mobile-quick-slider-container {
+  display: none; /* Default: Hidden on Desktop / Laptop screens */
+  padding: 20px 16px;
+  background: #ffffff;
+  border-bottom: 1px solid var(--border);
+}
+
+@media (max-width: 768px) {
+  .mobile-quick-slider-container {
+    display: block; /* Visible ONLY on Mobile & Small screens (<= 768px) */
+  }
+}
+
+@media (min-width: 769px) {
+  .mobile-quick-slider-container {
+    display: none !important; /* Strict hidden on desktop / laptop screens */
+  }
+}
+
+.mobile-slider-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 0 4px;
+}
+
+.mobile-slider-header span {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.swipe-hint {
+  font-size: 11px !important;
+  color: var(--text-muted) !important;
+  font-weight: 600 !important;
+}
+
+.mobile-quick-slider {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 8px;
+  scrollbar-width: none;
+}
+
+.mobile-quick-slider::-webkit-scrollbar {
+  display: none;
+}
+
+.slider-card {
+  flex: 0 0 160px;
+  scroll-snap-align: start;
+  border-radius: 16px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 115px;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.05);
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+}
+
+.slider-card:active {
+  transform: scale(0.96);
+}
+
+.slider-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.slider-info h4 {
+  font-size: 13px;
+  font-weight: 800;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.slider-info p {
+  font-size: 11px;
+  margin: 2px 0 0 0;
+  opacity: 0.85;
+}
+
+/* Category-based distinct colors */
+.card-appointments {
+  background: linear-gradient(135deg, #f3e8ff, #faf5ff);
+  border: 1px solid #e9d5ff;
+  color: #6b21a8;
+}
+.card-appointments .slider-icon {
+  background: #9333ea;
+  color: #ffffff;
+}
+.card-appointments h4 { color: #581c87; }
+
+/* Visually strong Emergency alert card */
+.card-emergency {
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  border: 1px solid #991b1b;
+  color: #ffffff;
+  box-shadow: 0 6px 16px rgba(220, 38, 38, 0.28);
+}
+.card-emergency .slider-icon {
+  background: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+.card-emergency h4 { color: #ffffff; }
+.card-emergency p { color: #fecaca; }
+.emergency-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: #ffffff;
+  color: #dc2626;
+  font-size: 8px;
+  font-weight: 800;
+  padding: 2px 5px;
+  border-radius: 6px;
+}
+
+.card-findcare {
+  background: linear-gradient(135deg, #ecfdf5, #f0fdf4);
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+}
+.card-findcare .slider-icon {
+  background: #10b981;
+  color: #ffffff;
+}
+.card-findcare h4 { color: #047857; }
+
+.card-ai {
+  background: linear-gradient(135deg, #e0f2fe, #f0f9ff);
+  border: 1px solid #bae6fd;
+  color: #075985;
+}
+.card-ai .slider-icon {
+  background: #0284c7;
+  color: #ffffff;
+}
+.card-ai h4 { color: #0369a1; }
+
+.slider-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.slider-dots .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #cbd5e1;
+}
+
+.slider-dots .dot.active {
+  width: 14px;
+  border-radius: 8px;
+  background: var(--primary);
+}
+
 /* NAVBAR RESPONSIVE */
 .navbar {
   background: #ffffff;
@@ -150,10 +326,6 @@ button, input, select, textarea {
   gap: 6px;
   cursor: pointer;
   transition: all 0.2s;
-}
-
-.ai-help-btn:hover {
-  background: var(--primary-hover);
 }
 
 .login-btn {
@@ -978,11 +1150,7 @@ button, input, select, textarea {
   gap: 10px;
 }
 
-/* =========================================
-   MOBILE & TABLET BREAKPOINTS (ALL GADGETS)
-   ========================================= */
-
-/* Tablets / Medium Laptops (width <= 960px) */
+/* MEDIA BREAKPOINTS */
 @media (max-width: 960px) {
   .hero-container {
     grid-template-columns: 1fr;
@@ -1005,7 +1173,6 @@ button, input, select, textarea {
   }
 }
 
-/* Mobile Devices / Smartphones (width <= 640px) */
 @media (max-width: 640px) {
   .navbar-container {
     padding: 12px 16px;
