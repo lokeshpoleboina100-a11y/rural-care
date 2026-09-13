@@ -20,6 +20,7 @@ import AIHelpDeskPage from './pages/AIHelpDeskPage';
 import HealthRecords from './pages/HealthRecords';
 import PharmaciesAndCamps from './pages/PharmaciesAndCamps';
 import MedicationRemindersPage from './pages/MedicationRemindersPage';
+import ClinicalAssessmentPage from './pages/ClinicalAssessmentPage';
 import { AlertCircle } from 'lucide-react';
 
 function ProtectedRoute({ children, allowedRoles }) {
@@ -64,6 +65,7 @@ function MainApp() {
           <Route path="/register" element={<Register />} />
           <Route path="/emergency" element={<Emergency />} />
           <Route path="/appointments" element={<Appointments />} />
+          <Route path="/assessment" element={<ClinicalAssessmentPage />} />
           <Route path="/records" element={<HealthRecords />} />
           <Route path="/pharmacies" element={<PharmaciesAndCamps />} />
           <Route path="/medication-reminders" element={<MedicationRemindersPage />} />
